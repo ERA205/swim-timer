@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import {
   createInitialSession,
   lapsPerDetection,
+  POOL_LENGTH_YARDS,
   type DetectionConfig,
   type SessionState,
   DEFAULT_DETECTION_CONFIG,
@@ -80,7 +81,18 @@ function registerDetection(source: 'camera' | 'manual') {
     session.detectionsCount * lapsPerDetection(session.totalLaps),
   );
 
-  if (session.detectionsCount >= session.detectionsNeeded) {
+  const elapsedMs = now - (session.startedAt ?? now);
+  const isFinish = session.detectionsCount >= session.detectionsNeeded;
+
+  if (!isFinish && session.totalLaps > 2) {
+    session.splits.push({
+      yards: session.currentLaps * POOL_LENGTH_YARDS,
+      laps: session.currentLaps,
+      elapsedMs,
+    });
+  }
+
+  if (isFinish) {
     session.status = 'finished';
     session.finishedAt = now;
     session.elapsedMs = now - (session.startedAt ?? now);
@@ -130,6 +142,7 @@ io.on('connection', (socket) => {
     session.detectionsCount = 0;
     session.lastDetectionAt = null;
     session.finishedAt = null;
+    session.splits = [];
     startTimer();
     broadcastState();
   });

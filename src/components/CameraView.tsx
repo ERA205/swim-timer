@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useMotionDetection } from '../hooks/useMotionDetection';
+import { SplitTimes } from './SplitTimes';
 import { formatTime } from '../../shared/types';
 
 export function CameraView() {
@@ -126,9 +127,10 @@ export function CameraView() {
       </div>
 
       <div className="camera-hud">
-        <div className="hud-metric">
+        <div className="hud-metric hud-metric-wide">
           <span className="metric-label">Time</span>
           <span className="metric-value">{formatTime(session.elapsedMs)}</span>
+          <SplitTimes splits={session.splits} />
         </div>
         <div className="hud-metric">
           <span className="metric-label">Laps</span>

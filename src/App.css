@@ -241,6 +241,56 @@ input {
   letter-spacing: -0.03em;
 }
 
+.split-times {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.split-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.split-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #bfdbfe;
+}
+
+.camera-hud .split-times {
+  margin-top: 0.35rem;
+}
+
+.camera-hud .split-row {
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.camera-hud .split-label {
+  font-size: 0.75rem;
+  min-width: 2.75rem;
+}
+
+.camera-hud .split-value {
+  font-size: 0.95rem;
+}
+
+.hud-metric-wide {
+  grid-column: span 1;
+}
+
 .lap-readout {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

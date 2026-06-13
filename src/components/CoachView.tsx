@@ -1,4 +1,5 @@
 import { useSocket } from '../hooks/useSocket';
+import { SplitTimes } from './SplitTimes';
 import {
   formatDistanceLabel,
   formatTime,
@@ -103,6 +104,7 @@ export function CoachView() {
           <div className="timer-readout">
             <span className="timer-label">Elapsed</span>
             <span className="timer-value">{formatTime(session.elapsedMs)}</span>
+            <SplitTimes splits={session.splits} />
           </div>
 
           <div className="lap-readout">

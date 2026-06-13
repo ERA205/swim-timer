@@ -2,6 +2,12 @@ export const POOL_LENGTH_YARDS = 25;
 
 export type SessionStatus = 'idle' | 'ready' | 'running' | 'finished';
 
+export interface SplitTime {
+  yards: number;
+  laps: number;
+  elapsedMs: number;
+}
+
 export interface SessionState {
   status: SessionStatus;
   distanceYards: number;
@@ -14,6 +20,7 @@ export interface SessionState {
   finishedAt: number | null;
   swimmerName: string;
   lastDetectionAt: number | null;
+  splits: SplitTime[];
 }
 
 export interface DetectionConfig {
@@ -44,6 +51,7 @@ export function createInitialSession(distanceYards = 100): SessionState {
     finishedAt: null,
     swimmerName: '',
     lastDetectionAt: null,
+    splits: [],
   };
 }
 
