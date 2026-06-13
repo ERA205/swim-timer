@@ -5,15 +5,26 @@ interface MotionDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   config: DetectionConfig;
-  enabled: boolean;
+  active: boolean;
+  detecting: boolean;
+  resetKey: number;
   onDetection: () => void;
+}
+
+function clearCanvas(canvas: HTMLCanvasElement | null) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx || canvas.width === 0 || canvas.height === 0) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 export function useMotionDetection({
   videoRef,
   canvasRef,
   config,
-  enabled,
+  active,
+  detecting,
+  resetKey,
   onDetection,
 }: MotionDetectionOptions) {
   const [motionLevel, setMotionLevel] = useState(0);
@@ -28,15 +39,30 @@ export function useMotionDetection({
     onDetectionRef.current = onDetection;
   }, [onDetection]);
 
-  const calibrate = useCallback(() => {
-    setIsCalibrating(true);
+  const resetDetection = useCallback(() => {
+    previousFrameRef.current = null;
+    lastTriggerRef.current = 0;
     baselineRef.current = [];
-    setTimeout(() => setIsCalibrating(false), 2000);
-  }, []);
+    setMotionLevel(0);
+    setIsCalibrating(false);
+    clearCanvas(canvasRef.current);
+  }, [canvasRef]);
 
   useEffect(() => {
-    if (!enabled) {
+    resetDetection();
+  }, [resetKey, resetDetection]);
+
+  const calibrate = useCallback(() => {
+    resetDetection();
+    setIsCalibrating(true);
+    setTimeout(() => setIsCalibrating(false), 2000);
+  }, [resetDetection]);
+
+  useEffect(() => {
+    if (!active) {
       cancelAnimationFrame(animationRef.current);
+      clearCanvas(canvasRef.current);
+      previousFrameRef.current = null;
       return;
     }
 
@@ -58,15 +84,15 @@ export function useMotionDetection({
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
 
-      const lineY = Math.floor(config.lineY * canvas.height);
-      const zoneTop = Math.max(0, lineY - Math.floor((config.zoneHeight * canvas.height) / 2));
-      const zoneBottom = Math.min(
-        canvas.height,
-        lineY + Math.floor((config.zoneHeight * canvas.height) / 2),
+      const lineX = Math.floor(config.lineX * canvas.width);
+      const zoneLeft = Math.max(0, lineX - Math.floor((config.zoneWidth * canvas.width) / 2));
+      const zoneRight = Math.min(
+        canvas.width,
+        lineX + Math.floor((config.zoneWidth * canvas.width) / 2),
       );
-      const zoneHeight = zoneBottom - zoneTop;
+      const zoneWidth = zoneRight - zoneLeft;
 
-      const imageData = ctx.getImageData(0, zoneTop, canvas.width, zoneHeight);
+      const imageData = ctx.getImageData(zoneLeft, 0, zoneWidth, canvas.height);
       const prev = previousFrameRef.current;
 
       let motion = 0;
@@ -91,19 +117,21 @@ export function useMotionDetection({
       previousFrameRef.current = imageData;
       setMotionLevel(motion);
 
-      if (isCalibrating) {
-        baselineRef.current.push(motion);
-      } else {
-        const baseline =
-          baselineRef.current.length > 0
-            ? baselineRef.current.reduce((a, b) => a + b, 0) / baselineRef.current.length
-            : 0;
-        const threshold = Math.max(config.sensitivity, baseline * 2.5);
-        const now = Date.now();
+      if (detecting) {
+        if (isCalibrating) {
+          baselineRef.current.push(motion);
+        } else {
+          const baseline =
+            baselineRef.current.length > 0
+              ? baselineRef.current.reduce((a, b) => a + b, 0) / baselineRef.current.length
+              : 0;
+          const threshold = Math.max(config.sensitivity, baseline * 2.5);
+          const now = Date.now();
 
-        if (motion > threshold && now - lastTriggerRef.current > config.cooldownMs) {
-          lastTriggerRef.current = now;
-          onDetectionRef.current();
+          if (motion > threshold && now - lastTriggerRef.current > config.cooldownMs) {
+            lastTriggerRef.current = now;
+            onDetectionRef.current();
+          }
         }
       }
 
@@ -113,22 +141,27 @@ export function useMotionDetection({
         overlayCtx.lineWidth = 3;
         overlayCtx.setLineDash([12, 8]);
         overlayCtx.beginPath();
-        overlayCtx.moveTo(0, lineY);
-        overlayCtx.lineTo(canvas.width, lineY);
+        overlayCtx.moveTo(lineX, 0);
+        overlayCtx.lineTo(lineX, canvas.height);
         overlayCtx.stroke();
         overlayCtx.setLineDash([]);
 
         overlayCtx.fillStyle =
           motion > config.sensitivity ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.1)';
-        overlayCtx.fillRect(0, zoneTop, canvas.width, zoneHeight);
+        overlayCtx.fillRect(zoneLeft, 0, zoneWidth, canvas.height);
       }
 
       animationRef.current = requestAnimationFrame(analyze);
     };
 
+    previousFrameRef.current = null;
     animationRef.current = requestAnimationFrame(analyze);
-    return () => cancelAnimationFrame(animationRef.current);
-  }, [videoRef, canvasRef, config, enabled, isCalibrating]);
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+      clearCanvas(canvasRef.current);
+      previousFrameRef.current = null;
+    };
+  }, [videoRef, canvasRef, config, active, detecting, isCalibrating, resetKey]);
 
-  return { motionLevel, calibrate, isCalibrating };
+  return { motionLevel, calibrate, isCalibrating, resetDetection };
 }

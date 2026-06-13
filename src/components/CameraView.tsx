@@ -18,6 +18,9 @@ export function CameraView() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const sessionRevision = session?.sessionRevision ?? 0;
+  const [cameraKey, setCameraKey] = useState(0);
+  const prevRevisionRef = useRef(-1);
 
   const detectionEnabled = session?.status === 'running';
 
@@ -30,9 +33,21 @@ export function CameraView() {
     videoRef,
     canvasRef,
     config,
-    enabled: !!stream && detectionEnabled,
+    active: !!stream,
+    detecting: !!stream && detectionEnabled,
+    resetKey: sessionRevision,
     onDetection: handleDetection,
   });
+
+  useEffect(() => {
+    if (prevRevisionRef.current !== sessionRevision) {
+      const isReset = prevRevisionRef.current >= 0 && sessionRevision > prevRevisionRef.current;
+      prevRevisionRef.current = sessionRevision;
+      if (isReset) {
+        setCameraKey((k) => k + 1);
+      }
+    }
+  }, [sessionRevision]);
 
   useEffect(() => {
     let active = true;
@@ -78,10 +93,10 @@ export function CameraView() {
       active = false;
       localStream?.getTracks().forEach((t) => t.stop());
     };
-  }, [facingMode]);
+  }, [facingMode, cameraKey]);
 
   const adjustLine = (delta: number) => {
-    updateConfig({ lineY: Math.min(0.9, Math.max(0.1, config.lineY + delta)) });
+    updateConfig({ lineX: Math.min(0.9, Math.max(0.1, config.lineX + delta)) });
   };
 
   if (!session) {
@@ -112,7 +127,11 @@ export function CameraView() {
           muted
           className="camera-video"
         />
-        <canvas ref={canvasRef} className="camera-overlay" />
+        <canvas
+          key={`overlay-${sessionRevision}`}
+          ref={canvasRef}
+          className="camera-overlay"
+        />
 
         {cameraError && (
           <div className="camera-error">
@@ -147,20 +166,20 @@ export function CameraView() {
       <section className="panel camera-controls">
         <h2>Detection plane</h2>
         <p className="hint">
-          Align the blue line with the wall plane. When a swimmer&apos;s arm or torso
-          crosses it, a lap is counted.
+          Align the vertical blue line with the wall plane. Move it left or right
+          until the swimmer&apos;s arm or body crosses it on turns.
         </p>
 
         <div className="slider-row">
           <label>
-            Line position
+            Line position (left ↔ right)
             <input
               type="range"
               min={0.1}
               max={0.9}
               step={0.01}
-              value={config.lineY}
-              onChange={(e) => updateConfig({ lineY: Number(e.target.value) })}
+              value={config.lineX}
+              onChange={(e) => updateConfig({ lineX: Number(e.target.value) })}
             />
           </label>
         </div>
@@ -181,10 +200,10 @@ export function CameraView() {
 
         <div className="action-row">
           <button type="button" className="btn ghost" onClick={() => adjustLine(-0.03)}>
-            Line up
+            Line left
           </button>
           <button type="button" className="btn ghost" onClick={() => adjustLine(0.03)}>
-            Line down
+            Line right
           </button>
           <button
             type="button"

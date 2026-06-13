@@ -151,8 +151,10 @@ io.on('connection', (socket) => {
     stopTimer();
     const distance = session.distanceYards;
     const name = session.swimmerName;
+    const revision = session.sessionRevision + 1;
     session = createInitialSession(distance);
     session.swimmerName = name;
+    session.sessionRevision = revision;
     broadcastState();
   });
 

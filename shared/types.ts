@@ -21,18 +21,19 @@ export interface SessionState {
   swimmerName: string;
   lastDetectionAt: number | null;
   splits: SplitTime[];
+  sessionRevision: number;
 }
 
 export interface DetectionConfig {
-  lineY: number;
-  zoneHeight: number;
+  lineX: number;
+  zoneWidth: number;
   sensitivity: number;
   cooldownMs: number;
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
-  lineY: 0.55,
-  zoneHeight: 0.2,
+  lineX: 0.5,
+  zoneWidth: 0.2,
   sensitivity: 18,
   cooldownMs: 2500,
 };
@@ -52,6 +53,7 @@ export function createInitialSession(distanceYards = 100): SessionState {
     swimmerName: '',
     lastDetectionAt: null,
     splits: [],
+    sessionRevision: 0,
   };
 }
 
