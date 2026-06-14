@@ -163,7 +163,12 @@ export function CameraView() {
         <div className="hud-metric hud-metric-wide">
           <span className="metric-label">Time</span>
           <span className="metric-value">{formatTime(session.elapsedMs)}</span>
-          <SplitTimes splits={session.splits} />
+          <SplitTimes
+            splits={session.splits}
+            elapsedMs={session.elapsedMs}
+            finished={session.status === 'finished'}
+            distanceYards={session.distanceYards}
+          />
         </div>
         <div className="hud-metric">
           <span className="metric-label">Laps</span>

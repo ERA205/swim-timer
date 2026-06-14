@@ -73,3 +73,34 @@ export function formatTime(ms: number): string {
 export function formatDistanceLabel(yards: number): string {
   return `${yards} yd (${yards / POOL_LENGTH_YARDS} laps)`;
 }
+
+export interface SegmentSplit {
+  yards: number;
+  segmentMs: number;
+}
+
+export function toSegmentSplits(
+  splits: SplitTime[],
+  elapsedMs: number,
+  finished: boolean,
+  distanceYards: number,
+): SegmentSplit[] {
+  const segments = splits.map((split, index) => ({
+    yards: split.yards,
+    segmentMs: split.elapsedMs - (index > 0 ? splits[index - 1].elapsedMs : 0),
+  }));
+
+  if (finished && distanceYards > POOL_LENGTH_YARDS * 2) {
+    const lastCumulative =
+      splits.length > 0 ? splits[splits.length - 1].elapsedMs : 0;
+    const finalYards = distanceYards;
+    if (!splits.some((split) => split.yards === finalYards)) {
+      segments.push({
+        yards: finalYards,
+        segmentMs: elapsedMs - lastCumulative,
+      });
+    }
+  }
+
+  return segments;
+}

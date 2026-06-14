@@ -110,7 +110,12 @@ export function CoachView() {
           <div className="timer-readout">
             <span className="timer-label">Elapsed</span>
             <span className="timer-value">{formatTime(session.elapsedMs)}</span>
-            <SplitTimes splits={session.splits} />
+            <SplitTimes
+              splits={session.splits}
+              elapsedMs={session.elapsedMs}
+              finished={session.status === 'finished'}
+              distanceYards={session.distanceYards}
+            />
           </div>
 
           <div className="lap-readout">
