@@ -32,11 +32,26 @@ if (isProd) {
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
+  maxHttpBufferSize: 5e6,
 });
 
 let session: SessionState = createInitialSession();
 let detectionConfig: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG };
 let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+const coachSockets = new Set<string>();
+let cameraSocketId: string | null = null;
+
+function notifyCameraStreamState() {
+  if (!cameraSocketId) return;
+  io.to(cameraSocketId).emit('camera:stream-state', {
+    streaming: coachSockets.size > 0,
+  });
+}
+
+function notifyCameraStatus() {
+  io.emit('camera:status', { connected: cameraSocketId !== null });
+}
 
 function broadcastState() {
   io.emit('session:update', session);
@@ -112,6 +127,44 @@ function registerDetection(source: 'camera' | 'manual') {
 io.on('connection', (socket) => {
   socket.emit('session:update', session);
   socket.emit('config:update', detectionConfig);
+  socket.emit('camera:status', { connected: cameraSocketId !== null });
+
+  socket.on('client:register', (role: 'coach' | 'camera') => {
+    if (role === 'coach') {
+      coachSockets.add(socket.id);
+      notifyCameraStreamState();
+    }
+    if (role === 'camera') {
+      if (cameraSocketId && cameraSocketId !== socket.id) {
+        io.to(cameraSocketId).emit('camera:replaced');
+      }
+      cameraSocketId = socket.id;
+      notifyCameraStatus();
+      notifyCameraStreamState();
+    }
+  });
+
+  socket.on('camera:frame', (frame: string) => {
+    if (socket.id !== cameraSocketId) return;
+    for (const coachId of coachSockets) {
+      io.to(coachId).emit('camera:frame', frame);
+    }
+  });
+
+  socket.on('camera:calibrate', () => {
+    if (cameraSocketId) {
+      io.to(cameraSocketId).emit('camera:calibrate');
+    }
+  });
+
+  socket.on('disconnect', () => {
+    coachSockets.delete(socket.id);
+    if (socket.id === cameraSocketId) {
+      cameraSocketId = null;
+      notifyCameraStatus();
+    }
+    notifyCameraStreamState();
+  });
 
   socket.on('session:set-distance', (distanceYards: number) => {
     if (session.status === 'running') return;

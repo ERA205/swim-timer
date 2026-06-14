@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useMotionDetection } from '../hooks/useMotionDetection';
+import { useCameraStream } from '../hooks/useCameraStream';
 import { SplitTimes } from './SplitTimes';
 import { formatTime } from '../../shared/types';
 
@@ -9,9 +10,10 @@ export function CameraView() {
     connected,
     session,
     config,
+    shouldStream,
     registerDetection,
-    updateConfig,
-  } = useSocket();
+    sendFrame,
+  } = useSocket('camera');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,6 +40,19 @@ export function CameraView() {
     resetKey: sessionRevision,
     onDetection: handleDetection,
   });
+
+  useCameraStream({
+    videoRef,
+    stream,
+    shouldStream,
+    sendFrame,
+  });
+
+  useEffect(() => {
+    const onCalibrate = () => calibrate();
+    window.addEventListener('swim-timer:calibrate', onCalibrate);
+    return () => window.removeEventListener('swim-timer:calibrate', onCalibrate);
+  }, [calibrate]);
 
   useEffect(() => {
     if (prevRevisionRef.current !== sessionRevision) {
@@ -95,10 +110,6 @@ export function CameraView() {
     };
   }, [facingMode, cameraKey]);
 
-  const adjustLine = (delta: number) => {
-    updateConfig({ lineX: Math.min(0.9, Math.max(0.1, config.lineX + delta)) });
-  };
-
   if (!session) {
     return (
       <div className="panel">
@@ -112,7 +123,7 @@ export function CameraView() {
       <header className="view-header compact">
         <div>
           <h1>Camera Mode</h1>
-          <p className="subtitle">Point at the wall plane — detect arm/body crossings</p>
+          <p className="subtitle">Fixed lane camera — controls are on the coach laptop</p>
         </div>
         <span className={`status-pill ${connected ? 'online' : 'offline'}`}>
           {connected ? 'Live' : 'Offline'}
@@ -136,12 +147,15 @@ export function CameraView() {
         {cameraError && (
           <div className="camera-error">
             <p>{cameraError}</p>
-            <p className="hint">On iPhone: use Safari and accept the self-signed certificate warning.</p>
+            <p className="hint">On iPhone: use Safari and accept the certificate warning.</p>
           </div>
         )}
 
         {detectionEnabled && (
           <div className="camera-badge running">Recording</div>
+        )}
+        {shouldStream && (
+          <div className="camera-badge streaming">Streaming to coach</div>
         )}
       </div>
 
@@ -164,54 +178,21 @@ export function CameraView() {
       </div>
 
       <section className="panel camera-controls">
-        <h2>Detection plane</h2>
-        <p className="hint">
-          Align the vertical blue line with the wall plane. Move it left or right
-          until the swimmer&apos;s arm or body crosses it on turns.
+        <p className={`status-banner status-${session.status}`}>
+          {session.status === 'idle' && 'Waiting for coach to arm timer'}
+          {session.status === 'ready' && 'Armed — ready to start'}
+          {session.status === 'running' && 'Detecting crossings…'}
+          {session.status === 'finished' && `Done — ${formatTime(session.elapsedMs)}`}
         </p>
 
-        <div className="slider-row">
-          <label>
-            Line position (left ↔ right)
-            <input
-              type="range"
-              min={0.1}
-              max={0.9}
-              step={0.01}
-              value={config.lineX}
-              onChange={(e) => updateConfig({ lineX: Number(e.target.value) })}
-            />
-          </label>
-        </div>
-
-        <div className="slider-row">
-          <label>
-            Sensitivity
-            <input
-              type="range"
-              min={8}
-              max={40}
-              step={1}
-              value={config.sensitivity}
-              onChange={(e) => updateConfig({ sensitivity: Number(e.target.value) })}
-            />
-          </label>
-        </div>
-
         <div className="action-row">
-          <button type="button" className="btn ghost" onClick={() => adjustLine(-0.03)}>
-            Line left
-          </button>
-          <button type="button" className="btn ghost" onClick={() => adjustLine(0.03)}>
-            Line right
-          </button>
           <button
             type="button"
-            className="btn primary"
+            className="btn ghost"
             onClick={calibrate}
             disabled={isCalibrating}
           >
-            {isCalibrating ? 'Calibrating…' : 'Calibrate (empty lane)'}
+            {isCalibrating ? 'Calibrating…' : 'Calibrate locally'}
           </button>
           <button
             type="button"
@@ -223,13 +204,6 @@ export function CameraView() {
             Flip camera
           </button>
         </div>
-
-        <p className={`status-banner status-${session.status}`}>
-          {session.status === 'idle' && 'Waiting for coach to arm timer'}
-          {session.status === 'ready' && 'Armed — ready to start'}
-          {session.status === 'running' && 'Detecting crossings…'}
-          {session.status === 'finished' && `Done — ${formatTime(session.elapsedMs)}`}
-        </p>
       </section>
     </div>
   );

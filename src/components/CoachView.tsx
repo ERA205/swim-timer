@@ -1,5 +1,6 @@
 import { useSocket } from '../hooks/useSocket';
 import { SplitTimes } from './SplitTimes';
+import { CoachCameraFeed } from './CoachCameraFeed';
 import {
   formatDistanceLabel,
   formatTime,
@@ -12,13 +13,18 @@ export function CoachView() {
   const {
     connected,
     session,
+    config,
+    cameraFrame,
+    cameraConnected,
     setDistance,
     setName,
     arm,
     start,
     reset,
     manualDetection,
-  } = useSocket();
+    updateConfig,
+    calibrateCamera,
+  } = useSocket('coach');
 
   if (!session) {
     return (
@@ -146,11 +152,19 @@ export function CoachView() {
         </section>
       </div>
 
+      <CoachCameraFeed
+        frame={cameraFrame}
+        connected={cameraConnected}
+        config={config}
+        onUpdateConfig={updateConfig}
+        onCalibrate={calibrateCamera}
+      />
+
       <section className="panel info-panel">
         <h2>How it works</h2>
         <ol className="steps">
-          <li>Open <strong>Camera Mode</strong> on a phone at the end of the lane, facing horizontally across the wall plane.</li>
-          <li>Position the detection line where the swimmer&apos;s arm or body breaks the plane on turns.</li>
+          <li>Open <strong>Camera Mode</strong> on the fixed phone at the end of the lane.</li>
+          <li>Use the lane camera feed below to position the detection line on your laptop.</li>
           <li>Calibrate with an empty lane, then start the race when the swimmer dives in.</li>
           <li>
             For {session.distanceYards} yards: first return = {Math.min(2, session.totalLaps)} laps,
