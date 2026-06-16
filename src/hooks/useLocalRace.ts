@@ -29,6 +29,12 @@ export interface RaceResult {
   splits: SplitTime[];
 }
 
+export interface RaceUpdate {
+  splits: SplitTime[];
+  currentLaps: number;
+  detectionsCount: number;
+}
+
 function createIdleRace(): LocalRaceState {
   return {
     status: 'idle',
@@ -64,10 +70,12 @@ function raceFromSession(session: SessionState): LocalRaceState {
 export function useLocalRace(
   session: SessionState | null,
   config: DetectionConfig,
+  onUpdate: (update: RaceUpdate) => void,
   onFinish: (result: RaceResult) => void,
 ) {
   const [race, setRace] = useState<LocalRaceState>(createIdleRace);
   const raceRef = useRef(race);
+  const onUpdateRef = useRef(onUpdate);
   const onFinishRef = useRef(onFinish);
   const lastRevisionRef = useRef(-1);
   const lastStartedAtRef = useRef<number | null>(null);
@@ -75,6 +83,10 @@ export function useLocalRace(
   useEffect(() => {
     raceRef.current = race;
   }, [race]);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   useEffect(() => {
     onFinishRef.current = onFinish;
@@ -165,6 +177,14 @@ export function useLocalRace(
           currentLaps: prev.totalLaps,
         };
       }
+
+      queueMicrotask(() =>
+        onUpdateRef.current({
+          splits,
+          currentLaps,
+          detectionsCount,
+        }),
+      );
 
       return next;
     });

@@ -13,6 +13,7 @@ export function CameraView() {
     config,
     shouldStream,
     submitRaceResult,
+    submitRaceUpdate,
     sendFrame,
   } = useSocket('camera');
 
@@ -25,6 +26,13 @@ export function CameraView() {
   const [cameraKey, setCameraKey] = useState(0);
   const prevRevisionRef = useRef(-1);
 
+  const handleUpdate = useCallback(
+    (update: Parameters<typeof submitRaceUpdate>[0]) => {
+      submitRaceUpdate(update);
+    },
+    [submitRaceUpdate],
+  );
+
   const handleFinish = useCallback(
     (result: Parameters<typeof submitRaceResult>[0]) => {
       submitRaceResult(result);
@@ -33,7 +41,12 @@ export function CameraView() {
     [submitRaceResult],
   );
 
-  const { race, registerDetection } = useLocalRace(session, config, handleFinish);
+  const { race, registerDetection } = useLocalRace(
+    session,
+    config,
+    handleUpdate,
+    handleFinish,
+  );
 
   const detectionEnabled = race.status === 'running';
 

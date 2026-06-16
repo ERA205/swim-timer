@@ -1,4 +1,5 @@
 import { useSocket } from '../hooks/useSocket';
+import { useEstimatedElapsed } from '../hooks/useEstimatedElapsed';
 import { SplitTimes } from './SplitTimes';
 import { CameraSetupModal } from './CameraSetupModal';
 import {
@@ -30,6 +31,10 @@ export function CoachView() {
     calibrateCamera,
   } = useSocket('coach');
 
+  const isRunning = session?.status === 'running';
+  const isFinished = session?.status === 'finished';
+  const estimateMs = useEstimatedElapsed(session?.startedAt ?? null, !!isRunning);
+
   if (!session) {
     return (
       <div className="panel">
@@ -40,7 +45,7 @@ export function CoachView() {
 
   const progress =
     session.totalLaps > 0 ? (session.currentLaps / session.totalLaps) * 100 : 0;
-  const showResults = session.status === 'finished';
+  const displayElapsed = isFinished ? session.elapsedMs : isRunning ? estimateMs : session.elapsedMs;
 
   return (
     <div className="coach-view">
@@ -136,26 +141,25 @@ export function CoachView() {
         <section className="panel timer-panel">
           <div className="timer-readout">
             <span className="timer-label">
-              {showResults ? 'Final time' : session.status === 'running' ? 'Race in progress' : 'Elapsed'}
+              {isFinished ? 'Final time' : isRunning ? 'Estimate' : 'Elapsed'}
             </span>
-            {showResults ? (
-              <>
-                <span className="timer-value">{formatTime(session.elapsedMs)}</span>
-                <SplitTimes
-                  splits={session.splits}
-                  elapsedMs={session.elapsedMs}
-                  finished
-                  distanceYards={session.distanceYards}
-                />
-              </>
-            ) : session.status === 'running' ? (
-              <span className="timer-value timer-waiting">—</span>
-            ) : (
-              <span className="timer-value">{formatTime(session.elapsedMs)}</span>
+            <span className={`timer-value ${isRunning ? 'timer-estimate' : ''}`}>
+              {formatTime(displayElapsed)}
+            </span>
+            {(isRunning || isFinished) && (
+              <SplitTimes
+                splits={session.splits}
+                elapsedMs={isFinished ? session.elapsedMs : estimateMs}
+                finished={isFinished}
+                distanceYards={session.distanceYards}
+              />
+            )}
+            {isRunning && (
+              <p className="hint timer-hint">Final time updates from camera at finish</p>
             )}
           </div>
 
-          {showResults && (
+          {(isRunning || isFinished) && (
             <>
               <div className="lap-readout">
                 <div>
@@ -186,7 +190,7 @@ export function CoachView() {
             {session.status === 'idle' && 'Set distance and arm the timer'}
             {session.status === 'ready' && 'Ready — hit Start when the swimmer goes'}
             {session.status === 'running' &&
-              `${session.swimmerName || 'Swimmer'} racing — timing on lane camera…`}
+              `${session.swimmerName || 'Swimmer'} racing — splits from camera`}
             {session.status === 'finished' &&
               `Finished! ${formatTime(session.elapsedMs)} for ${session.distanceYards} yd`}
           </p>
@@ -208,7 +212,7 @@ export function CoachView() {
           <li>Open <strong>Camera Mode</strong> on the fixed phone at the end of the lane.</li>
           <li>Use <strong>Setup camera</strong> to briefly view the feed and align the detection line.</li>
           <li>Hit <strong>Start Race</strong> — the phone times locally from that exact moment.</li>
-          <li>When the swimmer finishes, results are sent back to this screen automatically.</li>
+          <li>Splits appear here as they happen; the final time updates when the swimmer finishes.</li>
         </ol>
       </section>
     </div>

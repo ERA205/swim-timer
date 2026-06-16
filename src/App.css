@@ -454,6 +454,16 @@ input {
   font-size: clamp(2rem, 6vw, 3rem) !important;
 }
 
+.timer-estimate {
+  color: #bfdbfe;
+}
+
+.timer-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

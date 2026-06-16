@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { DetectionConfig, SessionState } from '../../shared/types';
 import { DEFAULT_DETECTION_CONFIG } from '../../shared/types';
-import type { RaceResult } from './useLocalRace';
+import type { RaceResult, RaceUpdate } from './useLocalRace';
 
 const SOCKET_URL =
   import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
@@ -111,6 +111,7 @@ export function useSocket(role: ClientRole) {
     start: () => emit('session:start'),
     reset: () => emit('session:reset'),
     submitRaceResult: (result: RaceResult) => emit('camera:race-result', result),
+    submitRaceUpdate: (update: RaceUpdate) => emit('camera:race-update', update),
     updateConfig: (partial: Partial<DetectionConfig>) =>
       emit('config:update', partial),
     sendFrame: (frame: string) => emit('camera:frame', frame),

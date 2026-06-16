@@ -68,6 +68,21 @@ interface RaceResultPayload {
   splits: SplitTime[];
 }
 
+interface RaceUpdatePayload {
+  splits: SplitTime[];
+  currentLaps: number;
+  detectionsCount: number;
+}
+
+function applyRaceUpdate(update: RaceUpdatePayload) {
+  if (session.status !== 'running') return;
+
+  session.splits = update.splits;
+  session.currentLaps = update.currentLaps;
+  session.detectionsCount = update.detectionsCount;
+  broadcastState();
+}
+
 function applyRaceResult(result: RaceResultPayload) {
   if (session.status !== 'running') return;
 
@@ -115,6 +130,11 @@ io.on('connection', (socket) => {
     if (cameraSocketId) {
       io.to(cameraSocketId).emit('camera:calibrate');
     }
+  });
+
+  socket.on('camera:race-update', (update: RaceUpdatePayload) => {
+    if (socket.id !== cameraSocketId) return;
+    applyRaceUpdate(update);
   });
 
   socket.on('camera:race-result', (result: RaceResultPayload) => {
