@@ -6,10 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   createInitialSession,
-  lapsPerDetection,
-  POOL_LENGTH_YARDS,
   type DetectionConfig,
   type SessionState,
+  type SplitTime,
   DEFAULT_DETECTION_CONFIG,
 } from '../shared/types.js';
 
@@ -37,20 +36,20 @@ const io = new Server(httpServer, {
 
 let session: SessionState = createInitialSession();
 let detectionConfig: DetectionConfig = { ...DEFAULT_DETECTION_CONFIG };
-let timerInterval: ReturnType<typeof setInterval> | null = null;
 
-const coachSockets = new Set<string>();
 let cameraSocketId: string | null = null;
-
-function notifyCameraStreamState() {
-  if (!cameraSocketId) return;
-  io.to(cameraSocketId).emit('camera:stream-state', {
-    streaming: coachSockets.size > 0,
-  });
-}
+let streamingCoachId: string | null = null;
 
 function notifyCameraStatus() {
   io.emit('camera:status', { connected: cameraSocketId !== null });
+}
+
+function setCameraStreaming(coachId: string | null) {
+  streamingCoachId = coachId;
+  if (!cameraSocketId) return;
+  io.to(cameraSocketId).emit('camera:stream-state', {
+    streaming: coachId !== null,
+  });
 }
 
 function broadcastState() {
@@ -61,66 +60,23 @@ function broadcastConfig() {
   io.emit('config:update', detectionConfig);
 }
 
-function startTimer() {
-  if (timerInterval) return;
-  timerInterval = setInterval(() => {
-    if (session.status === 'running' && session.startedAt) {
-      session.elapsedMs = Date.now() - session.startedAt;
-      broadcastState();
-    }
-  }, 50);
+interface RaceResultPayload {
+  elapsedMs: number;
+  currentLaps: number;
+  detectionsCount: number;
+  finishedAt: number;
+  splits: SplitTime[];
 }
 
-function stopTimer() {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-}
-
-function registerDetection(source: 'camera' | 'manual') {
+function applyRaceResult(result: RaceResultPayload) {
   if (session.status !== 'running') return;
 
-  const now = Date.now();
-  if (
-    session.lastDetectionAt &&
-    now - session.lastDetectionAt < detectionConfig.cooldownMs
-  ) {
-    return;
-  }
-
-  session.lastDetectionAt = now;
-  session.detectionsCount += 1;
-  session.currentLaps = Math.min(
-    session.totalLaps,
-    session.detectionsCount * lapsPerDetection(session.totalLaps),
-  );
-
-  const elapsedMs = now - (session.startedAt ?? now);
-  const isFinish = session.detectionsCount >= session.detectionsNeeded;
-
-  if (!isFinish && session.totalLaps > 2) {
-    session.splits.push({
-      yards: session.currentLaps * POOL_LENGTH_YARDS,
-      laps: session.currentLaps,
-      elapsedMs,
-    });
-  }
-
-  if (isFinish) {
-    session.status = 'finished';
-    session.finishedAt = now;
-    session.elapsedMs = now - (session.startedAt ?? now);
-    session.currentLaps = session.totalLaps;
-    stopTimer();
-  }
-
-  io.emit('detection:triggered', {
-    source,
-    detectionsCount: session.detectionsCount,
-    currentLaps: session.currentLaps,
-    finished: session.status === 'finished',
-  });
+  session.status = 'finished';
+  session.elapsedMs = result.elapsedMs;
+  session.currentLaps = result.currentLaps;
+  session.detectionsCount = result.detectionsCount;
+  session.finishedAt = result.finishedAt;
+  session.splits = result.splits;
   broadcastState();
 }
 
@@ -130,25 +86,29 @@ io.on('connection', (socket) => {
   socket.emit('camera:status', { connected: cameraSocketId !== null });
 
   socket.on('client:register', (role: 'coach' | 'camera') => {
-    if (role === 'coach') {
-      coachSockets.add(socket.id);
-      notifyCameraStreamState();
-    }
     if (role === 'camera') {
       if (cameraSocketId && cameraSocketId !== socket.id) {
         io.to(cameraSocketId).emit('camera:replaced');
       }
       cameraSocketId = socket.id;
       notifyCameraStatus();
-      notifyCameraStreamState();
+      io.emit('camera:joined');
+    }
+  });
+
+  socket.on('camera:stream-start', () => {
+    setCameraStreaming(socket.id);
+  });
+
+  socket.on('camera:stream-stop', () => {
+    if (streamingCoachId === socket.id) {
+      setCameraStreaming(null);
     }
   });
 
   socket.on('camera:frame', (frame: string) => {
-    if (socket.id !== cameraSocketId) return;
-    for (const coachId of coachSockets) {
-      io.to(coachId).emit('camera:frame', frame);
-    }
+    if (socket.id !== cameraSocketId || !streamingCoachId) return;
+    io.to(streamingCoachId).emit('camera:frame', frame);
   });
 
   socket.on('camera:calibrate', () => {
@@ -157,13 +117,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('camera:race-result', (result: RaceResultPayload) => {
+    if (socket.id !== cameraSocketId) return;
+    applyRaceResult(result);
+  });
+
   socket.on('disconnect', () => {
-    coachSockets.delete(socket.id);
+    if (streamingCoachId === socket.id) {
+      setCameraStreaming(null);
+    }
     if (socket.id === cameraSocketId) {
       cameraSocketId = null;
+      setCameraStreaming(null);
       notifyCameraStatus();
     }
-    notifyCameraStreamState();
   });
 
   socket.on('session:set-distance', (distanceYards: number) => {
@@ -196,12 +163,11 @@ io.on('connection', (socket) => {
     session.lastDetectionAt = null;
     session.finishedAt = null;
     session.splits = [];
-    startTimer();
+    setCameraStreaming(null);
     broadcastState();
   });
 
   socket.on('session:reset', () => {
-    stopTimer();
     const distance = session.distanceYards;
     const name = session.swimmerName;
     const revision = session.sessionRevision + 1;
@@ -209,14 +175,6 @@ io.on('connection', (socket) => {
     session.swimmerName = name;
     session.sessionRevision = revision;
     broadcastState();
-  });
-
-  socket.on('detection:register', () => {
-    registerDetection('camera');
-  });
-
-  socket.on('detection:manual', () => {
-    registerDetection('manual');
   });
 
   socket.on('config:update', (config: Partial<DetectionConfig>) => {

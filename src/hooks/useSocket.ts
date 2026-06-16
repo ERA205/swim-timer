@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { DetectionConfig, SessionState } from '../../shared/types';
 import { DEFAULT_DETECTION_CONFIG } from '../../shared/types';
+import type { RaceResult } from './useLocalRace';
 
 const SOCKET_URL =
   import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
@@ -15,7 +16,22 @@ export function useSocket(role: ClientRole) {
   const [config, setConfig] = useState<DetectionConfig>(DEFAULT_DETECTION_CONFIG);
   const [cameraFrame, setCameraFrame] = useState<string | null>(null);
   const [cameraConnected, setCameraConnected] = useState(false);
+  const [isViewingCamera, setIsViewingCamera] = useState(false);
+  const [cameraSetupPrompt, setCameraSetupPrompt] = useState(false);
   const [shouldStream, setShouldStream] = useState(false);
+
+  const startCameraView = useCallback(() => {
+    socketRef.current?.emit('camera:stream-start');
+    setIsViewingCamera(true);
+    setCameraSetupPrompt(false);
+    setCameraFrame(null);
+  }, []);
+
+  const stopCameraView = useCallback(() => {
+    socketRef.current?.emit('camera:stream-stop');
+    setIsViewingCamera(false);
+    setCameraFrame(null);
+  }, []);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
@@ -35,13 +51,23 @@ export function useSocket(role: ClientRole) {
       socket.on('camera:frame', setCameraFrame);
       socket.on('camera:status', (status: { connected: boolean }) => {
         setCameraConnected(status.connected);
-        if (!status.connected) setCameraFrame(null);
+        if (!status.connected) {
+          setCameraFrame(null);
+          setIsViewingCamera(false);
+          setCameraSetupPrompt(false);
+        }
+      });
+      socket.on('camera:joined', () => {
+        setCameraSetupPrompt(true);
       });
     }
 
     if (role === 'camera') {
       socket.on('camera:stream-state', (state: { streaming: boolean }) => {
         setShouldStream(state.streaming);
+        if (!state.streaming) {
+          window.dispatchEvent(new CustomEvent('swim-timer:stream-stop'));
+        }
       });
       socket.on('camera:calibrate', () => {
         window.dispatchEvent(new CustomEvent('swim-timer:calibrate'));
@@ -56,6 +82,7 @@ export function useSocket(role: ClientRole) {
       socket.off('config:update');
       socket.off('camera:frame');
       socket.off('camera:status');
+      socket.off('camera:joined');
       socket.off('camera:stream-state');
       socket.off('camera:calibrate');
       socket.disconnect();
@@ -72,14 +99,18 @@ export function useSocket(role: ClientRole) {
     config,
     cameraFrame,
     cameraConnected,
+    isViewingCamera,
+    cameraSetupPrompt,
+    dismissCameraPrompt: () => setCameraSetupPrompt(false),
+    startCameraView,
+    stopCameraView,
     shouldStream,
     setDistance: (yards: number) => emit('session:set-distance', yards),
     setName: (name: string) => emit('session:set-name', name),
     arm: () => emit('session:arm'),
     start: () => emit('session:start'),
     reset: () => emit('session:reset'),
-    registerDetection: () => emit('detection:register'),
-    manualDetection: () => emit('detection:manual'),
+    submitRaceResult: (result: RaceResult) => emit('camera:race-result', result),
     updateConfig: (partial: Partial<DetectionConfig>) =>
       emit('config:update', partial),
     sendFrame: (frame: string) => emit('camera:frame', frame),

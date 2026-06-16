@@ -1,6 +1,6 @@
 import { useSocket } from '../hooks/useSocket';
 import { SplitTimes } from './SplitTimes';
-import { CoachCameraFeed } from './CoachCameraFeed';
+import { CameraSetupModal } from './CameraSetupModal';
 import {
   formatDistanceLabel,
   formatTime,
@@ -16,12 +16,16 @@ export function CoachView() {
     config,
     cameraFrame,
     cameraConnected,
+    isViewingCamera,
+    cameraSetupPrompt,
+    dismissCameraPrompt,
+    startCameraView,
+    stopCameraView,
     setDistance,
     setName,
     arm,
     start,
     reset,
-    manualDetection,
     updateConfig,
     calibrateCamera,
   } = useSocket('coach');
@@ -36,18 +40,38 @@ export function CoachView() {
 
   const progress =
     session.totalLaps > 0 ? (session.currentLaps / session.totalLaps) * 100 : 0;
+  const showResults = session.status === 'finished';
 
   return (
     <div className="coach-view">
       <header className="view-header">
         <div>
           <h1>Coach Dashboard</h1>
-          <p className="subtitle">Set the race and monitor splits from your laptop</p>
+          <p className="subtitle">Start the race — timing runs on the lane camera</p>
         </div>
-        <span className={`status-pill ${connected ? 'online' : 'offline'}`}>
-          {connected ? 'Connected' : 'Disconnected'}
-        </span>
+        <div className="header-status">
+          <span className={`status-pill ${cameraConnected ? 'online' : 'offline'}`}>
+            {cameraConnected ? 'Camera connected' : 'No camera'}
+          </span>
+          <span className={`status-pill ${connected ? 'online' : 'offline'}`}>
+            {connected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
       </header>
+
+      {cameraSetupPrompt && !isViewingCamera && session.status !== 'running' && (
+        <section className="panel setup-prompt">
+          <p>Lane camera connected. Open setup to align the detection line before the race.</p>
+          <div className="action-row">
+            <button type="button" className="btn primary" onClick={startCameraView}>
+              Setup camera
+            </button>
+            <button type="button" className="btn ghost" onClick={dismissCameraPrompt}>
+              Dismiss
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="coach-grid">
         <section className="panel">
@@ -80,10 +104,8 @@ export function CoachView() {
               ))}
             </div>
             <p className="hint">
-              Camera is at the start/finish wall. Each detection = 2 laps (out + back).
-              {' '}
-              {session.distanceYards} yd needs {session.detectionsNeeded} wall touch
-              {session.detectionsNeeded === 1 ? '' : 'es'}.
+              Each wall touch at the camera = 2 laps. {session.distanceYards} yd needs{' '}
+              {session.detectionsNeeded} touch{session.detectionsNeeded === 1 ? '' : 'es'}.
             </p>
           </div>
 
@@ -103,79 +125,90 @@ export function CoachView() {
                 Reset
               </button>
             )}
+            {cameraConnected && session.status !== 'running' && (
+              <button type="button" className="btn ghost" onClick={startCameraView}>
+                Setup camera
+              </button>
+            )}
           </div>
         </section>
 
         <section className="panel timer-panel">
           <div className="timer-readout">
-            <span className="timer-label">Elapsed</span>
-            <span className="timer-value">{formatTime(session.elapsedMs)}</span>
-            <SplitTimes
-              splits={session.splits}
-              elapsedMs={session.elapsedMs}
-              finished={session.status === 'finished'}
-              distanceYards={session.distanceYards}
-            />
+            <span className="timer-label">
+              {showResults ? 'Final time' : session.status === 'running' ? 'Race in progress' : 'Elapsed'}
+            </span>
+            {showResults ? (
+              <>
+                <span className="timer-value">{formatTime(session.elapsedMs)}</span>
+                <SplitTimes
+                  splits={session.splits}
+                  elapsedMs={session.elapsedMs}
+                  finished
+                  distanceYards={session.distanceYards}
+                />
+              </>
+            ) : session.status === 'running' ? (
+              <span className="timer-value timer-waiting">—</span>
+            ) : (
+              <span className="timer-value">{formatTime(session.elapsedMs)}</span>
+            )}
           </div>
 
-          <div className="lap-readout">
-            <div>
-              <span className="metric-label">Laps</span>
-              <span className="metric-value">
-                {session.currentLaps} / {session.totalLaps}
-              </span>
-            </div>
-            <div>
-              <span className="metric-label">Wall touches</span>
-              <span className="metric-value">
-                {session.detectionsCount} / {session.detectionsNeeded}
-              </span>
-            </div>
-            <div>
-              <span className="metric-label">Pool</span>
-              <span className="metric-value">{POOL_LENGTH_YARDS} yd</span>
-            </div>
-          </div>
+          {showResults && (
+            <>
+              <div className="lap-readout">
+                <div>
+                  <span className="metric-label">Laps</span>
+                  <span className="metric-value">
+                    {session.currentLaps} / {session.totalLaps}
+                  </span>
+                </div>
+                <div>
+                  <span className="metric-label">Wall touches</span>
+                  <span className="metric-value">
+                    {session.detectionsCount} / {session.detectionsNeeded}
+                  </span>
+                </div>
+                <div>
+                  <span className="metric-label">Pool</span>
+                  <span className="metric-value">{POOL_LENGTH_YARDS} yd</span>
+                </div>
+              </div>
 
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+            </>
+          )}
 
           <p className={`status-banner status-${session.status}`}>
             {session.status === 'idle' && 'Set distance and arm the timer'}
-            {session.status === 'ready' && 'Ready — waiting for start'}
-            {session.status === 'running' && `${session.swimmerName || 'Swimmer'} racing…`}
+            {session.status === 'ready' && 'Ready — hit Start when the swimmer goes'}
+            {session.status === 'running' &&
+              `${session.swimmerName || 'Swimmer'} racing — timing on lane camera…`}
             {session.status === 'finished' &&
               `Finished! ${formatTime(session.elapsedMs)} for ${session.distanceYards} yd`}
           </p>
-
-          {session.status === 'running' && (
-            <button type="button" className="btn ghost full-width" onClick={manualDetection}>
-              Manual lap (backup)
-            </button>
-          )}
         </section>
       </div>
 
-      <CoachCameraFeed
+      <CameraSetupModal
+        open={isViewingCamera}
         frame={cameraFrame}
-        connected={cameraConnected}
         config={config}
         onUpdateConfig={updateConfig}
         onCalibrate={calibrateCamera}
+        onClose={stopCameraView}
       />
 
       <section className="panel info-panel">
         <h2>How it works</h2>
         <ol className="steps">
           <li>Open <strong>Camera Mode</strong> on the fixed phone at the end of the lane.</li>
-          <li>Use the lane camera feed below to position the detection line on your laptop.</li>
-          <li>Calibrate with an empty lane, then start the race when the swimmer dives in.</li>
-          <li>
-            For {session.distanceYards} yards: first return = {Math.min(2, session.totalLaps)} laps,
-            {session.detectionsNeeded > 1 &&
-              ` second return = finish (${session.totalLaps} laps total).`}
-          </li>
+          <li>Use <strong>Setup camera</strong> to briefly view the feed and align the detection line.</li>
+          <li>Hit <strong>Start Race</strong> — the phone times locally from that exact moment.</li>
+          <li>When the swimmer finishes, results are sent back to this screen automatically.</li>
         </ol>
       </section>
     </div>

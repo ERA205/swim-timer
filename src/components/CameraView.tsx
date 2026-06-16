@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { useMotionDetection } from '../hooks/useMotionDetection';
 import { useCameraStream } from '../hooks/useCameraStream';
+import { useLocalRace } from '../hooks/useLocalRace';
 import { SplitTimes } from './SplitTimes';
 import { formatTime } from '../../shared/types';
 
@@ -11,7 +12,7 @@ export function CameraView() {
     session,
     config,
     shouldStream,
-    registerDetection,
+    submitRaceResult,
     sendFrame,
   } = useSocket('camera');
 
@@ -24,7 +25,17 @@ export function CameraView() {
   const [cameraKey, setCameraKey] = useState(0);
   const prevRevisionRef = useRef(-1);
 
-  const detectionEnabled = session?.status === 'running';
+  const handleFinish = useCallback(
+    (result: Parameters<typeof submitRaceResult>[0]) => {
+      submitRaceResult(result);
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    },
+    [submitRaceResult],
+  );
+
+  const { race, registerDetection } = useLocalRace(session, config, handleFinish);
+
+  const detectionEnabled = race.status === 'running';
 
   const handleDetection = useCallback(() => {
     registerDetection();
@@ -118,12 +129,19 @@ export function CameraView() {
     );
   }
 
+  const displayStatus =
+    race.status === 'running'
+      ? 'running'
+      : race.status === 'finished'
+        ? 'finished'
+        : session.status;
+
   return (
     <div className="camera-view">
       <header className="view-header compact">
         <div>
           <h1>Camera Mode</h1>
-          <p className="subtitle">Fixed lane camera — controls are on the coach laptop</p>
+          <p className="subtitle">Local timing — results sent to coach when done</p>
         </div>
         <span className={`status-pill ${connected ? 'online' : 'offline'}`}>
           {connected ? 'Live' : 'Offline'}
@@ -152,28 +170,28 @@ export function CameraView() {
         )}
 
         {detectionEnabled && (
-          <div className="camera-badge running">Recording</div>
+          <div className="camera-badge running">Timing</div>
         )}
         {shouldStream && (
-          <div className="camera-badge streaming">Streaming to coach</div>
+          <div className="camera-badge streaming">Coach viewing</div>
         )}
       </div>
 
       <div className="camera-hud">
         <div className="hud-metric hud-metric-wide">
           <span className="metric-label">Time</span>
-          <span className="metric-value">{formatTime(session.elapsedMs)}</span>
+          <span className="metric-value">{formatTime(race.elapsedMs)}</span>
           <SplitTimes
-            splits={session.splits}
-            elapsedMs={session.elapsedMs}
-            finished={session.status === 'finished'}
-            distanceYards={session.distanceYards}
+            splits={race.splits}
+            elapsedMs={race.elapsedMs}
+            finished={race.status === 'finished'}
+            distanceYards={race.distanceYards}
           />
         </div>
         <div className="hud-metric">
           <span className="metric-label">Laps</span>
           <span className="metric-value">
-            {session.currentLaps}/{session.totalLaps}
+            {race.currentLaps}/{race.totalLaps}
           </span>
         </div>
         <div className="hud-metric">
@@ -183,11 +201,11 @@ export function CameraView() {
       </div>
 
       <section className="panel camera-controls">
-        <p className={`status-banner status-${session.status}`}>
+        <p className={`status-banner status-${displayStatus}`}>
           {session.status === 'idle' && 'Waiting for coach to arm timer'}
-          {session.status === 'ready' && 'Armed — ready to start'}
-          {session.status === 'running' && 'Detecting crossings…'}
-          {session.status === 'finished' && `Done — ${formatTime(session.elapsedMs)}`}
+          {session.status === 'ready' && 'Armed — waiting for coach start'}
+          {race.status === 'running' && 'Timing locally from coach start…'}
+          {race.status === 'finished' && `Done — sent ${formatTime(race.elapsedMs)} to coach`}
         </p>
 
         <div className="action-row">
@@ -195,7 +213,7 @@ export function CameraView() {
             type="button"
             className="btn ghost"
             onClick={calibrate}
-            disabled={isCalibrating}
+            disabled={isCalibrating || race.status === 'running'}
           >
             {isCalibrating ? 'Calibrating…' : 'Calibrate locally'}
           </button>
@@ -205,6 +223,7 @@ export function CameraView() {
             onClick={() =>
               setFacingMode((f) => (f === 'environment' ? 'user' : 'environment'))
             }
+            disabled={race.status === 'running'}
           >
             Flip camera
           </button>
