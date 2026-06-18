@@ -346,7 +346,7 @@ io.on('connection', (socket) => {
     session.splits = [];
     session.focusedSwimmerId = null;
     if (session.raceMode === 'multi') {
-      session.swimmers = session.swimmers.map((s, id) => ({
+      session.swimmers = session.swimmers.map((s) => ({
         ...s,
         phase: 'waiting',
         startOffsetMs: null,

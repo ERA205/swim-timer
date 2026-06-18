@@ -30,11 +30,14 @@ export function SwimmerPanel({
             </div>
             <div className="swimmer-metrics">
               <span>Laps {swimmer.lapsCompleted}/{totalLaps}</span>
-              {swimmer.startOffsetMs !== null && swimmer.id > 0 && (
-                <span>+{formatTime(swimmer.startOffsetMs)} behind leader</span>
-              )}
               {swimmer.id === 0 && swimmer.startOffsetMs === 0 && (
-                <span>Leader</span>
+                <span>First away</span>
+              )}
+              {swimmer.startOffsetMs !== null && swimmer.startOffsetMs > 0 && (
+                <span>+{formatTime(swimmer.startOffsetMs)} behind first away</span>
+              )}
+              {swimmer.phase === 'waiting' && swimmer.startOffsetMs === null && (
+                <span>On wall</span>
               )}
             </div>
             {swimmer.splits.length > 0 && (
@@ -53,8 +56,8 @@ export function SwimmerPanel({
         ))}
       </div>
       <p className="hint">
-        Track line (orange) counts send-offs and arms the stop line. Stop line (red/green) records
-        wall touches only for the focused swimmer in motion.
+        Track crossings from wall = swimmers leaving (1st, 2nd, 3rd…). Returns from pool
+        are first-away-first-back. Stop line only counts for the focused return.
       </p>
     </div>
   );

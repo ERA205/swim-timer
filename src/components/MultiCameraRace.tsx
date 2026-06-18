@@ -175,7 +175,7 @@ export function MultiCameraRace() {
           {session.status === 'ready' && 'Armed — waiting for coach start'}
           {race.status === 'running' && (stopArmed
             ? `Stop line armed for ${focused?.name ?? 'swimmer'}`
-            : 'Watching track line for swimmers')}
+            : `${race.departureQueue.filter((id) => race.swimmers[id]?.phase === 'out').length} in water — watching track line`)}
           {race.status === 'finished' && 'All swimmers done — results sent'}
         </p>
         <div className="action-row">

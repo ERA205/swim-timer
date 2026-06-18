@@ -168,7 +168,7 @@ export function CoachView() {
             </div>
             <p className="hint">
               {isMulti
-                ? 'Track line counts send-offs. Stop line records wall touches for the focused swimmer only.'
+                ? 'All swimmers leave before anyone returns. Track line: 3 leaves = 3 swimmers out, 4th cross (return) = swimmer 1 back.'
                 : `Each wall touch at the camera = 2 laps. ${session.distanceYards} yd needs ${session.detectionsNeeded} touch${session.detectionsNeeded === 1 ? '' : 'es'}.`}
             </p>
           </div>
