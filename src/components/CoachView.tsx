@@ -52,8 +52,9 @@ export function CoachView() {
   }
 
   const isMulti = session.raceMode === 'multi';
-  const progress =
-    session.totalLaps > 0 ? (session.currentLaps / (session.totalLaps * session.swimmerCount)) * 100 : 0;
+  const progress = !isMulti && session.totalLaps > 0
+    ? (session.currentLaps / session.totalLaps) * 100
+    : 0;
   const displayElapsed = isFinished ? session.elapsedMs : isRunning ? estimateMs : session.elapsedMs;
 
   return (
@@ -168,7 +169,7 @@ export function CoachView() {
             </div>
             <p className="hint">
               {isMulti
-                ? 'All swimmers leave before anyone returns. Track line: 3 leaves = 3 swimmers out, 4th cross (return) = swimmer 1 back.'
+                ? 'Main clock follows the first swimmer. Each person gets their own laps, touches, and splits below.'
                 : `Each wall touch at the camera = 2 laps. ${session.distanceYards} yd needs ${session.detectionsNeeded} touch${session.detectionsNeeded === 1 ? '' : 'es'}.`}
             </p>
           </div>
@@ -217,7 +218,17 @@ export function CoachView() {
 
           <div className="timer-readout">
             <span className="timer-label">
-              {isFinished ? 'Final time' : isRunning ? 'Estimate' : 'Elapsed'}
+              {isMulti
+                ? isFinished
+                  ? 'Main clock'
+                  : isRunning
+                    ? 'Main clock (estimate)'
+                    : 'Main clock'
+                : isFinished
+                  ? 'Final time'
+                  : isRunning
+                    ? 'Estimate'
+                    : 'Elapsed'}
             </span>
             <span className={`timer-value ${isRunning ? 'timer-estimate' : ''}`}>
               {formatTime(displayElapsed)}
@@ -240,12 +251,13 @@ export function CoachView() {
               swimmers={session.swimmers}
               focusedSwimmerId={session.focusedSwimmerId}
               totalLaps={session.totalLaps}
+              detectionsNeeded={session.detectionsNeeded}
               distanceYards={session.distanceYards}
               raceFinished={isFinished}
             />
           )}
 
-          {(isRunning || isFinished) && (
+          {(isRunning || isFinished) && !isMulti && (
             <>
               <div className="lap-readout">
                 <div>

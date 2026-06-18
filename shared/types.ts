@@ -14,12 +14,19 @@ export interface SwimmerState {
   id: number;
   name: string;
   phase: SwimmerPhase;
+  /** Stagger behind swimmer 1 (0 for first away). null = not yet sent */
   startOffsetMs: number | null;
   lapsCompleted: number;
   wallTouches: number;
   splits: SplitTime[];
   canTriggerStop: boolean;
   focused: boolean;
+  /** Personal race time (main clock minus stagger) */
+  elapsedMs: number;
+}
+
+export function swimmerRaceTime(mainElapsedMs: number, startOffsetMs: number | null): number {
+  return Math.max(0, mainElapsedMs - (startOffsetMs ?? 0));
 }
 
 export interface SessionState {
@@ -88,6 +95,7 @@ export function createSwimmers(count: number, names: string[] = []): SwimmerStat
     splits: [],
     canTriggerStop: false,
     focused: false,
+    elapsedMs: 0,
   }));
 }
 

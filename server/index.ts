@@ -116,9 +116,6 @@ function applyMultiRaceUpdate(update: MultiRaceUpdatePayload) {
   if (session.status !== 'running') return;
 
   session.swimmers = update.swimmers;
-  session.splits = update.splits;
-  session.currentLaps = update.currentLaps;
-  session.detectionsCount = update.detectionsCount;
   session.focusedSwimmerId = update.focusedSwimmerId;
   broadcastState();
 }
@@ -128,9 +125,6 @@ function applyMultiRaceResult(result: MultiRaceResultPayload) {
 
   session.status = 'finished';
   session.swimmers = result.swimmers;
-  session.splits = result.splits;
-  session.currentLaps = result.currentLaps;
-  session.detectionsCount = result.detectionsCount;
   session.focusedSwimmerId = null;
   session.elapsedMs = result.elapsedMs;
   session.finishedAt = result.finishedAt;
@@ -346,13 +340,14 @@ io.on('connection', (socket) => {
     session.splits = [];
     session.focusedSwimmerId = null;
     if (session.raceMode === 'multi') {
-      session.swimmers = session.swimmers.map((s) => ({
+      session.swimmers = session.swimmers.map((s, id) => ({
         ...s,
-        phase: 'waiting',
-        startOffsetMs: null,
+        phase: id === 0 ? 'out' : 'waiting',
+        startOffsetMs: id === 0 ? 0 : null,
         lapsCompleted: 0,
         wallTouches: 0,
         splits: [],
+        elapsedMs: 0,
         canTriggerStop: false,
         focused: false,
       }));

@@ -165,6 +165,7 @@ export function MultiCameraRace() {
         swimmers={race.swimmers}
         focusedSwimmerId={race.focusedSwimmerId}
         totalLaps={race.totalLaps}
+        detectionsNeeded={race.detectionsNeeded}
         distanceYards={race.distanceYards}
         raceFinished={race.status === 'finished'}
       />

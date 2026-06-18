@@ -712,6 +712,20 @@ input {
   gap: 0.65rem;
   font-size: 0.85rem;
   color: var(--muted);
+  align-items: baseline;
+}
+
+.swimmer-time {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #bfdbfe;
+  font-variant-numeric: tabular-nums;
+}
+
+.swimmer-stagger {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .swimmer-splits {
