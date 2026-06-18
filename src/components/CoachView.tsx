@@ -3,10 +3,12 @@ import { useEstimatedElapsed } from '../hooks/useEstimatedElapsed';
 import { SplitTimes } from './SplitTimes';
 import { CameraSetupModal } from './CameraSetupModal';
 import { CameraLinkStatus, SyncStatusList } from './SyncStatus';
+import { SwimmerPanel } from './SwimmerPanel';
 import {
   formatDistanceLabel,
   formatTime,
   POOL_LENGTH_YARDS,
+  type RaceMode,
 } from '../../shared/types';
 
 const DISTANCE_OPTIONS = [25, 50, 100, 200, 500];
@@ -24,6 +26,9 @@ export function CoachView() {
     startCameraView,
     stopCameraView,
     setDistance,
+    setRaceMode,
+    setSwimmerCount,
+    setSwimmerName,
     setName,
     arm,
     start,
@@ -46,8 +51,9 @@ export function CoachView() {
     );
   }
 
+  const isMulti = session.raceMode === 'multi';
   const progress =
-    session.totalLaps > 0 ? (session.currentLaps / session.totalLaps) * 100 : 0;
+    session.totalLaps > 0 ? (session.currentLaps / (session.totalLaps * session.swimmerCount)) * 100 : 0;
   const displayElapsed = isFinished ? session.elapsedMs : isRunning ? estimateMs : session.elapsedMs;
 
   return (
@@ -85,16 +91,65 @@ export function CoachView() {
         <section className="panel">
           <h2>Race Setup</h2>
 
-          <label className="field">
-            <span>Swimmer name</span>
-            <input
-              type="text"
-              placeholder="e.g. Alex"
-              value={session.swimmerName}
-              onChange={(e) => setName(e.target.value)}
-              disabled={session.status === 'running'}
-            />
-          </label>
+          <div className="field">
+            <span>Mode</span>
+            <div className="chip-row">
+              {(['single', 'multi'] as RaceMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`chip ${session.raceMode === mode ? 'active' : ''}`}
+                  onClick={() => setRaceMode(mode)}
+                  disabled={session.status === 'running'}
+                >
+                  {mode === 'single' ? 'Single swimmer' : 'Multi swimmer'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isMulti ? (
+            <>
+              <div className="field">
+                <span>Swimmers in lane</span>
+                <div className="chip-row">
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`chip ${session.swimmerCount === n ? 'active' : ''}`}
+                      onClick={() => setSwimmerCount(n)}
+                      disabled={session.status === 'running'}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {session.swimmers.map((swimmer) => (
+                <label key={swimmer.id} className="field">
+                  <span>{swimmer.id === 0 ? 'Leader' : `Swimmer ${swimmer.id + 1}`}</span>
+                  <input
+                    type="text"
+                    value={swimmer.name}
+                    onChange={(e) => setSwimmerName(swimmer.id, e.target.value)}
+                    disabled={session.status === 'running'}
+                  />
+                </label>
+              ))}
+            </>
+          ) : (
+            <label className="field">
+              <span>Swimmer name</span>
+              <input
+                type="text"
+                placeholder="e.g. Alex"
+                value={session.swimmerName}
+                onChange={(e) => setName(e.target.value)}
+                disabled={session.status === 'running'}
+              />
+            </label>
+          )}
 
           <div className="field">
             <span>Distance</span>
@@ -112,8 +167,9 @@ export function CoachView() {
               ))}
             </div>
             <p className="hint">
-              Each wall touch at the camera = 2 laps. {session.distanceYards} yd needs{' '}
-              {session.detectionsNeeded} touch{session.detectionsNeeded === 1 ? '' : 'es'}.
+              {isMulti
+                ? 'Track line counts send-offs. Stop line records wall touches for the focused swimmer only.'
+                : `Each wall touch at the camera = 2 laps. ${session.distanceYards} yd needs ${session.detectionsNeeded} touch${session.detectionsNeeded === 1 ? '' : 'es'}.`}
             </p>
           </div>
 
@@ -166,7 +222,7 @@ export function CoachView() {
             <span className={`timer-value ${isRunning ? 'timer-estimate' : ''}`}>
               {formatTime(displayElapsed)}
             </span>
-            {(isRunning || isFinished) && (
+            {(isRunning || isFinished) && !isMulti && (
               <SplitTimes
                 splits={session.splits}
                 elapsedMs={isFinished ? session.elapsedMs : estimateMs}
@@ -174,10 +230,20 @@ export function CoachView() {
                 distanceYards={session.distanceYards}
               />
             )}
-            {isRunning && (
+            {isRunning && !isMulti && (
               <p className="hint timer-hint">Final time updates from camera at finish</p>
             )}
           </div>
+
+          {(isRunning || isFinished) && isMulti && (
+            <SwimmerPanel
+              swimmers={session.swimmers}
+              focusedSwimmerId={session.focusedSwimmerId}
+              totalLaps={session.totalLaps}
+              distanceYards={session.distanceYards}
+              raceFinished={isFinished}
+            />
+          )}
 
           {(isRunning || isFinished) && (
             <>
@@ -185,7 +251,7 @@ export function CoachView() {
                 <div>
                   <span className="metric-label">Laps</span>
                   <span className="metric-value">
-                    {session.currentLaps} / {session.totalLaps}
+                    {session.currentLaps} / {isMulti ? session.totalLaps * session.swimmerCount : session.totalLaps}
                   </span>
                 </div>
                 <div>
@@ -210,7 +276,9 @@ export function CoachView() {
             {session.status === 'idle' && 'Set distance and arm the timer'}
             {session.status === 'ready' && 'Ready — hit Start when the swimmer goes'}
             {session.status === 'running' &&
-              `${session.swimmerName || 'Swimmer'} racing — splits from camera`}
+              (isMulti
+                ? `${session.swimmerName || 'Lane'} racing — multi-swimmer tracking`
+                : `${session.swimmerName || 'Swimmer'} racing — splits from camera`)}
             {session.status === 'finished' &&
               `Finished! ${formatTime(session.elapsedMs)} for ${session.distanceYards} yd`}
           </p>
@@ -221,6 +289,7 @@ export function CoachView() {
         open={isViewingCamera}
         frame={cameraFrame}
         config={config}
+        multiMode={isMulti}
         onUpdateConfig={updateConfig}
         onCalibrate={calibrateCamera}
         onClose={stopCameraView}

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { DetectionConfig, SessionState, SyncEvent } from '../../shared/types';
 import { DEFAULT_DETECTION_CONFIG, POOL_LENGTH_YARDS } from '../../shared/types';
+import type { RaceMode } from '../../shared/types';
 import type { RaceResult, RaceUpdate } from './useLocalRace';
+import type { MultiRaceResult, MultiRaceUpdate } from './useMultiSwimmerRace';
 import { useSyncQueue } from './useSyncQueue';
 
 const SOCKET_URL =
@@ -208,6 +210,34 @@ export function useSocket(role: ClientRole) {
     [emitWithAck],
   );
 
+  const submitMultiRaceUpdate = useCallback(
+    async (update: MultiRaceUpdate) => {
+      const id = cameraSyncRef.current.beginSync(
+        'split',
+        'Recorded swimmer update — sending to coach',
+        true,
+      );
+      const result = await emitWithAck('camera:multi-race-update', { ...update, syncId: id });
+      if (result.ok) cameraSyncRef.current.confirmSync(id);
+      else cameraSyncRef.current.failSync(id);
+    },
+    [emitWithAck],
+  );
+
+  const submitMultiRaceResult = useCallback(
+    async (result: MultiRaceResult) => {
+      const id = cameraSyncRef.current.beginSync(
+        'finish',
+        'Recorded all finishes — sending to coach',
+        true,
+      );
+      const ack = await emitWithAck('camera:multi-race-result', { ...result, syncId: id });
+      if (ack.ok) cameraSyncRef.current.confirmSync(id);
+      else cameraSyncRef.current.failSync(id);
+    },
+    [emitWithAck],
+  );
+
   const emit = <T extends unknown[]>(event: string, ...args: T) => {
     socketRef.current?.emit(event, ...args);
   };
@@ -228,12 +258,18 @@ export function useSocket(role: ClientRole) {
     shouldStream,
     acknowledgeStart,
     setDistance: (yards: number) => emit('session:set-distance', yards),
+    setRaceMode: (mode: RaceMode) => emit('session:set-race-mode', mode),
+    setSwimmerCount: (count: number) => emit('session:set-swimmer-count', count),
+    setSwimmerName: (id: number, name: string) =>
+      emit('session:set-swimmer-name', { id, name }),
     setName: (name: string) => emit('session:set-name', name),
     arm: () => emit('session:arm'),
     start: () => emit('session:start'),
     reset: () => emit('session:reset'),
     submitRaceResult,
     submitRaceUpdate,
+    submitMultiRaceResult,
+    submitMultiRaceUpdate,
     updateConfig: (partial: Partial<DetectionConfig>) =>
       emit('config:update', partial),
     sendFrame: (frame: string) => emit('camera:frame', frame),

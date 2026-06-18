@@ -666,3 +666,76 @@ input {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+.swimmer-panel {
+  margin-bottom: 0.85rem;
+}
+
+.swimmer-panel h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+}
+
+.swimmer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.swimmer-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.swimmer-card.focused {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.25);
+}
+
+.swimmer-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.swimmer-phase {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.swimmer-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.swimmer-splits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: #bfdbfe;
+}
+
+.swimmer-done {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: #86efac;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.camera-badge.focused-swimmer {
+  top: auto;
+  bottom: 2.75rem;
+  left: 0.75rem;
+  right: auto;
+  background: rgba(34, 197, 94, 0.9);
+  color: white;
+}

@@ -6,10 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   createInitialSession,
+  createSwimmers,
   POOL_LENGTH_YARDS,
   type DetectionConfig,
+  type RaceMode,
   type SessionState,
   type SplitTime,
+  type SwimmerState,
   DEFAULT_DETECTION_CONFIG,
 } from '../shared/types.js';
 
@@ -95,6 +98,45 @@ function applyRaceUpdate(update: RaceUpdatePayload) {
   broadcastState();
 }
 
+interface MultiRaceUpdatePayload {
+  swimmers: SwimmerState[];
+  splits: SplitTime[];
+  currentLaps: number;
+  detectionsCount: number;
+  focusedSwimmerId: number | null;
+  syncId?: string;
+}
+
+interface MultiRaceResultPayload extends MultiRaceUpdatePayload {
+  elapsedMs: number;
+  finishedAt: number;
+}
+
+function applyMultiRaceUpdate(update: MultiRaceUpdatePayload) {
+  if (session.status !== 'running') return;
+
+  session.swimmers = update.swimmers;
+  session.splits = update.splits;
+  session.currentLaps = update.currentLaps;
+  session.detectionsCount = update.detectionsCount;
+  session.focusedSwimmerId = update.focusedSwimmerId;
+  broadcastState();
+}
+
+function applyMultiRaceResult(result: MultiRaceResultPayload) {
+  if (session.status !== 'running') return;
+
+  session.status = 'finished';
+  session.swimmers = result.swimmers;
+  session.splits = result.splits;
+  session.currentLaps = result.currentLaps;
+  session.detectionsCount = result.detectionsCount;
+  session.focusedSwimmerId = null;
+  session.elapsedMs = result.elapsedMs;
+  session.finishedAt = result.finishedAt;
+  broadcastState();
+}
+
 function applyRaceResult(result: RaceResultPayload) {
   if (session.status !== 'running') return;
 
@@ -168,7 +210,7 @@ io.on('connection', (socket) => {
   );
 
   socket.on('camera:race-update', (update: RaceUpdatePayload, ack?: (res: { ok: boolean }) => void) => {
-    if (socket.id !== cameraSocketId) {
+    if (socket.id !== cameraSocketId || session.raceMode === 'multi') {
       ack?.({ ok: false });
       return;
     }
@@ -181,7 +223,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('camera:race-result', (result: RaceResultPayload, ack?: (res: { ok: boolean }) => void) => {
-    if (socket.id !== cameraSocketId) {
+    if (socket.id !== cameraSocketId || session.raceMode === 'multi') {
       ack?.({ ok: false });
       return;
     }
@@ -189,6 +231,34 @@ io.on('connection', (socket) => {
     notifyCoachSync(syncId, 'finish', 'Receiving final time from camera', 'sending');
     applyRaceResult(result);
     notifyCoachSync(syncId, 'finish', 'Final time received', 'confirmed');
+    ack?.({ ok: true });
+  });
+
+  socket.on('camera:multi-race-update', (update: MultiRaceUpdatePayload, ack?: (res: { ok: boolean }) => void) => {
+    if (socket.id !== cameraSocketId || session.raceMode !== 'multi') {
+      ack?.({ ok: false });
+      return;
+    }
+    const syncId = update.syncId ?? `multi-split-${Date.now()}`;
+    const focused = update.swimmers.find((s) => s.id === update.focusedSwimmerId);
+    const label = focused
+      ? `Receiving ${focused.name} update from camera`
+      : 'Receiving swimmer update from camera';
+    notifyCoachSync(syncId, 'split', label, 'sending');
+    applyMultiRaceUpdate(update);
+    notifyCoachSync(syncId, 'split', 'Swimmer data received', 'confirmed');
+    ack?.({ ok: true });
+  });
+
+  socket.on('camera:multi-race-result', (result: MultiRaceResultPayload, ack?: (res: { ok: boolean }) => void) => {
+    if (socket.id !== cameraSocketId || session.raceMode !== 'multi') {
+      ack?.({ ok: false });
+      return;
+    }
+    const syncId = result.syncId ?? `multi-finish-${Date.now()}`;
+    notifyCoachSync(syncId, 'finish', 'Receiving multi-swimmer results from camera', 'sending');
+    applyMultiRaceResult(result);
+    notifyCoachSync(syncId, 'finish', 'All results received', 'confirmed');
     ack?.({ ok: true });
   });
 
@@ -205,14 +275,55 @@ io.on('connection', (socket) => {
 
   socket.on('session:set-distance', (distanceYards: number) => {
     if (session.status === 'running') return;
-    const name = session.swimmerName;
-    session = createInitialSession(distanceYards);
-    session.swimmerName = name;
+    const { swimmerName, raceMode, swimmerCount, swimmers } = session;
+    session = createInitialSession(distanceYards, raceMode);
+    session.swimmerName = swimmerName;
+    session.swimmerCount = swimmerCount;
+    session.swimmers = swimmers.length === swimmerCount
+      ? swimmers
+      : createSwimmers(swimmerCount, swimmers.map((s) => s.name));
+    broadcastState();
+  });
+
+  socket.on('session:set-race-mode', (raceMode: RaceMode) => {
+    if (session.status === 'running') return;
+    session.raceMode = raceMode;
+    if (raceMode === 'multi' && session.swimmerCount < 2) {
+      session.swimmerCount = 2;
+      session.swimmers = createSwimmers(2);
+    }
+    if (raceMode === 'single') {
+      session.swimmerCount = 1;
+      session.swimmers = createSwimmers(1, [session.swimmerName || 'Swimmer 1']);
+    }
+    broadcastState();
+  });
+
+  socket.on('session:set-swimmer-count', (count: number) => {
+    if (session.status === 'running' || session.raceMode !== 'multi') return;
+    const clamped = Math.min(8, Math.max(2, count));
+    const names = session.swimmers.map((s) => s.name);
+    session.swimmerCount = clamped;
+    session.swimmers = createSwimmers(clamped, names);
+    broadcastState();
+  });
+
+  socket.on('session:set-swimmer-name', (payload: { id: number; name: string }) => {
+    if (session.status === 'running') return;
+    session.swimmers = session.swimmers.map((s) =>
+      s.id === payload.id ? { ...s, name: payload.name } : s,
+    );
+    if (payload.id === 0) session.swimmerName = payload.name;
     broadcastState();
   });
 
   socket.on('session:set-name', (name: string) => {
     session.swimmerName = name;
+    if (session.swimmers[0]) {
+      session.swimmers = session.swimmers.map((s, i) =>
+        i === 0 ? { ...s, name } : s,
+      );
+    }
     broadcastState();
   });
 
@@ -233,6 +344,19 @@ io.on('connection', (socket) => {
     session.lastDetectionAt = null;
     session.finishedAt = null;
     session.splits = [];
+    session.focusedSwimmerId = null;
+    if (session.raceMode === 'multi') {
+      session.swimmers = session.swimmers.map((s, id) => ({
+        ...s,
+        phase: 'waiting',
+        startOffsetMs: null,
+        lapsCompleted: 0,
+        wallTouches: 0,
+        splits: [],
+        canTriggerStop: false,
+        focused: false,
+      }));
+    }
     setCameraStreaming(null);
     broadcastState();
   });
@@ -240,9 +364,14 @@ io.on('connection', (socket) => {
   socket.on('session:reset', () => {
     const distance = session.distanceYards;
     const name = session.swimmerName;
+    const raceMode = session.raceMode;
+    const swimmerCount = session.swimmerCount;
+    const swimmerNames = session.swimmers.map((s) => s.name);
     const revision = session.sessionRevision + 1;
-    session = createInitialSession(distance);
+    session = createInitialSession(distance, raceMode);
     session.swimmerName = name;
+    session.swimmerCount = swimmerCount;
+    session.swimmers = createSwimmers(swimmerCount, swimmerNames);
     session.sessionRevision = revision;
     broadcastState();
   });

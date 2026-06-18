@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DetectionConfig } from '../../shared/types';
+import { normalizeConfig } from '../../shared/types';
 
 interface MotionDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -84,12 +85,14 @@ export function useMotionDetection({
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
 
-      const lineX = Math.floor(config.lineX * canvas.width);
-      const zoneLeft = Math.max(0, lineX - Math.floor((config.zoneWidth * canvas.width) / 2));
+      const cfg = normalizeConfig(config);
+      const lineX = Math.floor(cfg.stopLineX * canvas.width);
+      const zoneLeft = Math.max(0, lineX - Math.floor((cfg.zoneWidth * canvas.width) / 2));
       const zoneRight = Math.min(
         canvas.width,
-        lineX + Math.floor((config.zoneWidth * canvas.width) / 2),
+        lineX + Math.floor((cfg.zoneWidth * canvas.width) / 2),
       );
+
       const zoneWidth = zoneRight - zoneLeft;
 
       const imageData = ctx.getImageData(zoneLeft, 0, zoneWidth, canvas.height);
@@ -125,10 +128,10 @@ export function useMotionDetection({
             baselineRef.current.length > 0
               ? baselineRef.current.reduce((a, b) => a + b, 0) / baselineRef.current.length
               : 0;
-          const threshold = Math.max(config.sensitivity, baseline * 2.5);
+          const threshold = Math.max(cfg.sensitivity, baseline * 2.5);
           const now = Date.now();
 
-          if (motion > threshold && now - lastTriggerRef.current > config.cooldownMs) {
+          if (motion > threshold && now - lastTriggerRef.current > cfg.cooldownMs) {
             lastTriggerRef.current = now;
             onDetectionRef.current();
           }
@@ -137,7 +140,7 @@ export function useMotionDetection({
 
       const overlayCtx = canvas.getContext('2d');
       if (overlayCtx) {
-        overlayCtx.strokeStyle = motion > config.sensitivity ? '#22c55e' : '#3b82f6';
+        overlayCtx.strokeStyle = motion > cfg.sensitivity ? '#22c55e' : '#3b82f6';
         overlayCtx.lineWidth = 3;
         overlayCtx.setLineDash([12, 8]);
         overlayCtx.beginPath();
@@ -147,7 +150,7 @@ export function useMotionDetection({
         overlayCtx.setLineDash([]);
 
         overlayCtx.fillStyle =
-          motion > config.sensitivity ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.1)';
+          motion > cfg.sensitivity ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.1)';
         overlayCtx.fillRect(zoneLeft, 0, zoneWidth, canvas.height);
       }
 

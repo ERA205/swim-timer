@@ -1,6 +1,8 @@
 export const POOL_LENGTH_YARDS = 25;
 
 export type SessionStatus = 'idle' | 'ready' | 'running' | 'finished';
+export type RaceMode = 'single' | 'multi';
+export type SwimmerPhase = 'waiting' | 'out' | 'returning' | 'at_wall' | 'done';
 
 export interface SplitTime {
   yards: number;
@@ -8,8 +10,23 @@ export interface SplitTime {
   elapsedMs: number;
 }
 
+export interface SwimmerState {
+  id: number;
+  name: string;
+  phase: SwimmerPhase;
+  startOffsetMs: number | null;
+  lapsCompleted: number;
+  wallTouches: number;
+  splits: SplitTime[];
+  canTriggerStop: boolean;
+  focused: boolean;
+}
+
 export interface SessionState {
   status: SessionStatus;
+  raceMode: RaceMode;
+  swimmerCount: number;
+  swimmers: SwimmerState[];
   distanceYards: number;
   totalLaps: number;
   currentLaps: number;
@@ -22,6 +39,7 @@ export interface SessionState {
   lastDetectionAt: number | null;
   splits: SplitTime[];
   sessionRevision: number;
+  focusedSwimmerId: number | null;
 }
 
 export type SyncKind = 'start' | 'split' | 'finish';
@@ -36,23 +54,50 @@ export interface SyncEvent {
 }
 
 export interface DetectionConfig {
-  lineX: number;
+  trackLineX: number;
+  stopLineX: number;
   zoneWidth: number;
   sensitivity: number;
   cooldownMs: number;
+  /** @deprecated use stopLineX */
+  lineX?: number;
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
-  lineX: 0.5,
-  zoneWidth: 0.2,
+  trackLineX: 0.38,
+  stopLineX: 0.58,
+  zoneWidth: 0.14,
   sensitivity: 18,
   cooldownMs: 2500,
 };
 
-export function createInitialSession(distanceYards = 100): SessionState {
+export function normalizeConfig(config: DetectionConfig): DetectionConfig {
+  const stopLineX = config.stopLineX ?? config.lineX ?? 0.58;
+  const trackLineX = config.trackLineX ?? stopLineX - 0.2;
+  return { ...config, trackLineX, stopLineX };
+}
+
+export function createSwimmers(count: number, names: string[] = []): SwimmerState[] {
+  return Array.from({ length: count }, (_, id) => ({
+    id,
+    name: names[id] ?? `Swimmer ${id + 1}`,
+    phase: 'waiting' as SwimmerPhase,
+    startOffsetMs: null,
+    lapsCompleted: 0,
+    wallTouches: 0,
+    splits: [],
+    canTriggerStop: false,
+    focused: false,
+  }));
+}
+
+export function createInitialSession(distanceYards = 100, raceMode: RaceMode = 'single'): SessionState {
   const totalLaps = distanceYards / POOL_LENGTH_YARDS;
   return {
     status: 'idle',
+    raceMode,
+    swimmerCount: 1,
+    swimmers: createSwimmers(1),
     distanceYards,
     totalLaps,
     currentLaps: 0,
@@ -65,6 +110,7 @@ export function createInitialSession(distanceYards = 100): SessionState {
     lastDetectionAt: null,
     splits: [],
     sessionRevision: 0,
+    focusedSwimmerId: null,
   };
 }
 
@@ -114,4 +160,80 @@ export function toSegmentSplits(
   }
 
   return segments;
+}
+
+export interface MultiRaceUpdate {
+  swimmers: SwimmerState[];
+  currentLaps: number;
+  detectionsCount: number;
+  splits: SplitTime[];
+  focusedSwimmerId: number | null;
+}
+
+export interface MultiRaceResult {
+  swimmers: SwimmerState[];
+  elapsedMs: number;
+  currentLaps: number;
+  detectionsCount: number;
+  finishedAt: number;
+  splits: SplitTime[];
+}
+
+export type LineCrossing = 'track-outbound' | 'track-inbound' | 'stop';
+
+export interface ZoneMotion {
+  level: number;
+  centroidX: number;
+  direction: number;
+}
+
+export function analyzeZoneMotion(
+  current: ImageData,
+  previous: ImageData | null,
+): ZoneMotion {
+  if (!previous || current.width !== previous.width || current.height !== previous.height) {
+    return { level: 0, centroidX: 0.5, direction: 0 };
+  }
+
+  const data = current.data;
+  const prevData = previous.data;
+  let diffSum = 0;
+  let weightedX = 0;
+  let weightTotal = 0;
+  const step = 4;
+  const width = current.width;
+
+  for (let i = 0; i < data.length; i += step * 6) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const pr = prevData[i];
+    const pg = prevData[i + 1];
+    const pb = prevData[i + 2];
+    const diff = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb);
+    diffSum += diff;
+
+    if (diff > 12) {
+      const pixelIndex = i / 4;
+      const x = (pixelIndex % width) / width;
+      weightedX += x * diff;
+      weightTotal += diff;
+    }
+  }
+
+  const samples = data.length / (step * 6);
+  const level = diffSum / samples;
+  const centroidX = weightTotal > 0 ? weightedX / weightTotal : 0.5;
+
+  return { level, centroidX, direction: 0 };
+}
+
+export function motionDirection(
+  prevCentroid: number,
+  currCentroid: number,
+  threshold = 0.008,
+): number {
+  const delta = currCentroid - prevCentroid;
+  if (Math.abs(delta) < threshold) return 0;
+  return delta > 0 ? 1 : -1;
 }
