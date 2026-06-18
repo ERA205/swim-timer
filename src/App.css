@@ -555,3 +555,114 @@ input {
   background: rgba(59, 130, 246, 0.85);
   color: white;
 }
+
+.camera-link-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.link-row.ok {
+  color: #86efac;
+}
+
+.link-row.pending {
+  color: #fde68a;
+}
+
+.link-row.warn {
+  color: #fca5a5;
+}
+
+.link-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.sync-status-list {
+  margin-bottom: 0.85rem;
+}
+
+.sync-status-title {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+
+.sync-empty {
+  margin: 0;
+}
+
+.sync-item {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.4rem;
+}
+
+.sync-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.88rem;
+}
+
+.sync-label {
+  color: var(--text);
+}
+
+.sync-state-text {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+}
+
+.sync-item.sync-confirmed .sync-state-text {
+  color: #86efac;
+}
+
+.sync-item.sync-failed .sync-state-text {
+  color: #fca5a5;
+}
+
+.sync-progress-bar {
+  height: 5px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sync-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--success));
+  transition: width 0.15s ease;
+}
+
+.sync-item.sync-confirmed .sync-progress-fill {
+  background: var(--success);
+}
+
+.sync-item.sync-failed .sync-progress-fill {
+  background: var(--danger);
+}
+
+.sync-local-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}

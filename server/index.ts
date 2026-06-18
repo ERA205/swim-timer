@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   createInitialSession,
+  POOL_LENGTH_YARDS,
   type DetectionConfig,
   type SessionState,
   type SplitTime,
@@ -66,12 +67,23 @@ interface RaceResultPayload {
   detectionsCount: number;
   finishedAt: number;
   splits: SplitTime[];
+  syncId?: string;
 }
 
 interface RaceUpdatePayload {
   splits: SplitTime[];
   currentLaps: number;
   detectionsCount: number;
+  syncId?: string;
+}
+
+function notifyCoachSync(
+  syncId: string,
+  kind: 'split' | 'finish',
+  label: string,
+  stage: 'sending' | 'confirmed' | 'failed',
+) {
+  io.emit('sync:progress', { syncId, kind, label, stage });
 }
 
 function applyRaceUpdate(update: RaceUpdatePayload) {
@@ -132,14 +144,52 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('camera:race-update', (update: RaceUpdatePayload) => {
-    if (socket.id !== cameraSocketId) return;
+  socket.on(
+    'camera:start-ack',
+    (
+      payload: { startedAt: number; sessionRevision: number; syncId?: string },
+      ack?: (res: { ok: boolean }) => void,
+    ) => {
+      if (socket.id !== cameraSocketId) {
+        ack?.({ ok: false });
+        return;
+      }
+      if (
+        session.status !== 'running' ||
+        session.startedAt !== payload.startedAt ||
+        session.sessionRevision !== payload.sessionRevision
+      ) {
+        ack?.({ ok: false });
+        return;
+      }
+      io.emit('camera:start-ack');
+      ack?.({ ok: true });
+    },
+  );
+
+  socket.on('camera:race-update', (update: RaceUpdatePayload, ack?: (res: { ok: boolean }) => void) => {
+    if (socket.id !== cameraSocketId) {
+      ack?.({ ok: false });
+      return;
+    }
+    const syncId = update.syncId ?? `split-${Date.now()}`;
+    const yards = update.currentLaps * POOL_LENGTH_YARDS;
+    notifyCoachSync(syncId, 'split', `Receiving ${yards} yd split from camera`, 'sending');
     applyRaceUpdate(update);
+    notifyCoachSync(syncId, 'split', `${yards} yd split received`, 'confirmed');
+    ack?.({ ok: true });
   });
 
-  socket.on('camera:race-result', (result: RaceResultPayload) => {
-    if (socket.id !== cameraSocketId) return;
+  socket.on('camera:race-result', (result: RaceResultPayload, ack?: (res: { ok: boolean }) => void) => {
+    if (socket.id !== cameraSocketId) {
+      ack?.({ ok: false });
+      return;
+    }
+    const syncId = result.syncId ?? `finish-${Date.now()}`;
+    notifyCoachSync(syncId, 'finish', 'Receiving final time from camera', 'sending');
     applyRaceResult(result);
+    notifyCoachSync(syncId, 'finish', 'Final time received', 'confirmed');
+    ack?.({ ok: true });
   });
 
   socket.on('disconnect', () => {

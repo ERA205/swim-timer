@@ -2,6 +2,7 @@ import { useSocket } from '../hooks/useSocket';
 import { useEstimatedElapsed } from '../hooks/useEstimatedElapsed';
 import { SplitTimes } from './SplitTimes';
 import { CameraSetupModal } from './CameraSetupModal';
+import { CameraLinkStatus, SyncStatusList } from './SyncStatus';
 import {
   formatDistanceLabel,
   formatTime,
@@ -29,6 +30,8 @@ export function CoachView() {
     reset,
     updateConfig,
     calibrateCamera,
+    startAck,
+    syncEvents,
   } = useSocket('coach');
 
   const isRunning = session?.status === 'running';
@@ -139,6 +142,23 @@ export function CoachView() {
         </section>
 
         <section className="panel timer-panel">
+          <CameraLinkStatus
+            cameraConnected={cameraConnected}
+            startAck={isRunning || isFinished ? startAck : 'none'}
+          />
+
+          {(isRunning || isFinished) && (
+            <SyncStatusList
+              events={syncEvents}
+              title="Data from camera"
+              emptyMessage={
+                isRunning && syncEvents.length === 0
+                  ? 'Splits will appear here as the camera sends them'
+                  : undefined
+              }
+            />
+          )}
+
           <div className="timer-readout">
             <span className="timer-label">
               {isFinished ? 'Final time' : isRunning ? 'Estimate' : 'Elapsed'}

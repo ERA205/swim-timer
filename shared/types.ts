@@ -24,6 +24,17 @@ export interface SessionState {
   sessionRevision: number;
 }
 
+export type SyncKind = 'start' | 'split' | 'finish';
+
+export interface SyncEvent {
+  id: string;
+  kind: SyncKind;
+  label: string;
+  state: 'sending' | 'confirmed' | 'failed';
+  progress: number;
+  recordedLocally?: boolean;
+}
+
 export interface DetectionConfig {
   lineX: number;
   zoneWidth: number;

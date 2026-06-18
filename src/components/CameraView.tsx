@@ -4,6 +4,7 @@ import { useMotionDetection } from '../hooks/useMotionDetection';
 import { useCameraStream } from '../hooks/useCameraStream';
 import { useLocalRace } from '../hooks/useLocalRace';
 import { SplitTimes } from './SplitTimes';
+import { SyncStatusList } from './SyncStatus';
 import { formatTime } from '../../shared/types';
 
 export function CameraView() {
@@ -15,6 +16,8 @@ export function CameraView() {
     submitRaceResult,
     submitRaceUpdate,
     sendFrame,
+    acknowledgeStart,
+    syncEvents,
   } = useSocket('camera');
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,6 +50,23 @@ export function CameraView() {
     handleUpdate,
     handleFinish,
   );
+
+  const prevStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (
+      race.status === 'running' &&
+      race.startedAt &&
+      race.startedAt !== prevStartedAtRef.current &&
+      session
+    ) {
+      prevStartedAtRef.current = race.startedAt;
+      acknowledgeStart(race.startedAt, session.sessionRevision);
+    }
+    if (race.status === 'idle') {
+      prevStartedAtRef.current = null;
+    }
+  }, [race.status, race.startedAt, session, acknowledgeStart]);
 
   const detectionEnabled = race.status === 'running';
 
@@ -214,11 +234,13 @@ export function CameraView() {
       </div>
 
       <section className="panel camera-controls">
+        <SyncStatusList events={syncEvents} title="Sending to coach" />
+
         <p className={`status-banner status-${displayStatus}`}>
           {session.status === 'idle' && 'Waiting for coach to arm timer'}
           {session.status === 'ready' && 'Armed — waiting for coach start'}
-          {race.status === 'running' && 'Timing locally from coach start…'}
-          {race.status === 'finished' && `Done — sent ${formatTime(race.elapsedMs)} to coach`}
+          {race.status === 'running' && 'Timing locally — data sends to coach after each split'}
+          {race.status === 'finished' && `Done — ${formatTime(race.elapsedMs)} recorded`}
         </p>
 
         <div className="action-row">
