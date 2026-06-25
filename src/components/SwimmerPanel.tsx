@@ -64,7 +64,7 @@ export function SwimmerPanel({
               <div className="swimmer-metrics">
                 <span className="swimmer-time">{formatTime(swimmer.elapsedMs)}</span>
                 <span>Laps {swimmer.lapsCompleted}/{totalLaps}</span>
-                <span>Touches {swimmer.wallTouches}/{detectionsNeeded}</span>
+                <span>Returns {swimmer.inboundPasses}/{detectionsNeeded}</span>
               </div>
 
               {swimmer.startOffsetMs !== null && swimmer.startOffsetMs > 0 && (
@@ -99,9 +99,8 @@ export function SwimmerPanel({
         })}
       </div>
       <p className="hint">
-        Coach Start begins the main clock. 1st track cross = swimmer 1 swimming.
-        2nd cross records swimmer 2&apos;s gap; each return stops that swimmer&apos;s time
-        (swimmer 2 = main clock minus gap).
+        Each swimmer needs 2 track passes per lap: leaving the wall, then returning from the pool.
+        A 50 finishes on the pool-direction pass; longer races may also use the stop line at the turn.
       </p>
     </div>
   );

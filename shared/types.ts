@@ -18,6 +18,8 @@ export interface SwimmerState {
   startOffsetMs: number | null;
   lapsCompleted: number;
   wallTouches: number;
+  /** Pool-direction track line crossings while returning */
+  inboundPasses: number;
   splits: SplitTime[];
   canTriggerStop: boolean;
   focused: boolean;
@@ -92,11 +94,17 @@ export function createSwimmers(count: number, names: string[] = []): SwimmerStat
     startOffsetMs: null,
     lapsCompleted: 0,
     wallTouches: 0,
+    inboundPasses: 0,
     splits: [],
     canTriggerStop: false,
     focused: false,
     elapsedMs: 0,
   }));
+}
+
+/** Each lap = 2 track passes (wall→pool, pool→wall). Returns needed to finish. */
+export function returnPassesRequired(detectionsNeeded: number): number {
+  return detectionsNeeded;
 }
 
 export function createInitialSession(distanceYards = 100, raceMode: RaceMode = 'single'): SessionState {

@@ -346,6 +346,7 @@ io.on('connection', (socket) => {
         startOffsetMs: null,
         lapsCompleted: 0,
         wallTouches: 0,
+        inboundPasses: 0,
         splits: [],
         elapsedMs: 0,
         canTriggerStop: false,

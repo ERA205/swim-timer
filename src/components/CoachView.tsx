@@ -293,7 +293,9 @@ export function CoachView() {
                 ? `${session.swimmerName || 'Lane'} racing — multi-swimmer tracking`
                 : `${session.swimmerName || 'Swimmer'} racing — splits from camera`)}
             {session.status === 'finished' &&
-              `Finished! ${formatTime(session.elapsedMs)} for ${session.distanceYards} yd`}
+              (isMulti
+                ? `Race over — main clock ${formatTime(session.elapsedMs)}`
+                : `Finished! ${formatTime(session.elapsedMs)} for ${session.distanceYards} yd`)}
           </p>
         </section>
       </div>
