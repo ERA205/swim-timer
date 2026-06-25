@@ -134,13 +134,20 @@ export function MultiCameraRace() {
   }
 
   const focused = race.swimmers.find((s) => s.focused);
+  const panelSwimmers = race.status === 'idle' ? session.swimmers : race.swimmers;
+  const swimmersInWater = race.swimmers.filter(
+    (s) => s.phase === 'out' || s.phase === 'returning',
+  ).length;
+  const swimmersDone = race.swimmers.filter((s) => s.phase === 'done').length;
 
   return (
     <div className="camera-view">
       <header className="view-header compact">
         <div>
           <h1>Camera Mode</h1>
-          <p className="subtitle">Multi-swimmer — track + stop lines</p>
+          <p className="subtitle">
+            {session.swimmerCount} swimmers — track + stop lines
+          </p>
         </div>
         <span className={`status-pill ${connected ? 'online' : 'offline'}`}>
           {connected ? 'Live' : 'Offline'}
@@ -190,21 +197,30 @@ export function MultiCameraRace() {
       </div>
 
       <SwimmerPanel
-        swimmers={race.swimmers}
+        swimmers={panelSwimmers}
         focusedSwimmerId={race.focusedSwimmerId}
-        totalLaps={race.totalLaps}
-        detectionsNeeded={race.detectionsNeeded}
-        distanceYards={race.distanceYards}
+        totalLaps={race.status === 'idle' ? session.totalLaps : race.totalLaps}
+        detectionsNeeded={race.status === 'idle' ? session.detectionsNeeded : race.detectionsNeeded}
+        distanceYards={race.status === 'idle' ? session.distanceYards : race.distanceYards}
         raceFinished={race.status === 'finished'}
+        departedCount={race.status === 'running' ? race.departedCount : undefined}
+        swimmerCount={session.swimmerCount}
       />
 
       <section className="panel camera-controls">
         <SyncStatusList events={syncEvents} title="Sending to coach" />
         <p className={`status-banner status-${race.status === 'running' ? 'running' : session.status}`}>
-          {session.status === 'ready' && 'Armed — waiting for coach start'}
-          {race.status === 'running' && (stopArmed
-            ? `Stop line armed for ${focused?.name ?? 'swimmer'}`
-            : `${race.departureQueue.filter((id) => race.swimmers[id]?.phase === 'out').length} in water — watching track line`)}
+          {session.status === 'idle' && `Waiting for coach — ${session.swimmerCount} swimmers configured`}
+          {session.status === 'ready' && `Armed — ${session.swimmerCount} swimmers, waiting for coach start`}
+          {race.status === 'running' && race.racePhase === 'departing' && (
+            `Departures ${race.departedCount}/${session.swimmerCount} — waiting for all to leave wall`
+          )}
+          {race.status === 'running' && race.racePhase === 'racing' && stopArmed && (
+            `Stop line armed for ${focused?.name ?? 'swimmer'}`
+          )}
+          {race.status === 'running' && race.racePhase === 'racing' && !stopArmed && (
+            `${swimmersInWater} swimming, ${swimmersDone} done — watching returns`
+          )}
           {race.status === 'finished' && 'All swimmers done — results sent'}
         </p>
         <div className="action-row">

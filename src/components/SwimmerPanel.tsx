@@ -11,6 +11,8 @@ interface SwimmerPanelProps {
   detectionsNeeded: number;
   distanceYards: number;
   raceFinished: boolean;
+  departedCount?: number;
+  swimmerCount?: number;
 }
 
 export function SwimmerPanel({
@@ -20,16 +22,31 @@ export function SwimmerPanel({
   detectionsNeeded,
   distanceYards,
   raceFinished,
+  departedCount,
+  swimmerCount,
 }: SwimmerPanelProps) {
+  const awaitingDeparture =
+    departedCount !== undefined &&
+    swimmerCount !== undefined &&
+    departedCount < swimmerCount;
+
   return (
     <div className="swimmer-panel">
-      <h3>Swimmers</h3>
+      <h3>
+        Swimmers
+        {swimmerCount !== undefined && ` (${swimmerCount})`}
+      </h3>
+      {awaitingDeparture && (
+        <p className="swimmer-departure-status">
+          Waiting for departures: {departedCount}/{swimmerCount} left the wall
+        </p>
+      )}
       <div className="swimmer-list">
         {swimmers.map((swimmer) => {
           const segments = toSegmentSplits(
             swimmer.splits,
             swimmer.elapsedMs,
-            raceFinished && swimmer.lapsCompleted >= totalLaps,
+            (raceFinished || swimmer.phase === 'done') && swimmer.lapsCompleted >= totalLaps,
             distanceYards,
           );
           const isActive = swimmer.phase !== 'waiting' && swimmer.phase !== 'done';
@@ -52,11 +69,11 @@ export function SwimmerPanel({
 
               {swimmer.startOffsetMs !== null && swimmer.startOffsetMs > 0 && (
                 <p className="swimmer-stagger">
-                  Sent off +{formatTime(swimmer.startOffsetMs)} behind first
+                  Sent off +{formatTime(swimmer.startOffsetMs)} behind leader
                 </p>
               )}
               {swimmer.id === 0 && swimmer.startOffsetMs === 0 && isActive && (
-                <p className="swimmer-stagger">First away — uses main clock</p>
+                <p className="swimmer-stagger">Leader — uses main clock</p>
               )}
               {swimmer.phase === 'waiting' && swimmer.startOffsetMs === null && (
                 <p className="swimmer-stagger">On wall — not yet sent</p>
@@ -72,7 +89,7 @@ export function SwimmerPanel({
                 </div>
               )}
 
-              {raceFinished && swimmer.lapsCompleted >= totalLaps && (
+              {swimmer.phase === 'done' && (
                 <span className="swimmer-done">
                   Finished {formatTime(swimmer.elapsedMs)}
                 </span>
@@ -82,8 +99,8 @@ export function SwimmerPanel({
         })}
       </div>
       <p className="hint">
-        1st track cross = first away (main clock). 2nd–nth crosses record send-off gaps.
-        Returns are tracked to the stop line; each swimmer&apos;s time = main clock minus their gap.
+        Coach sets swimmer count. Leader starts on coach Start; each next track cross records their gap.
+        After all leave, returns are tracked — each finisher&apos;s time = main clock minus their gap.
       </p>
     </div>
   );

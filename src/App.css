@@ -734,6 +734,16 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
+.swimmer-departure-status {
+  margin: 0 0 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 0.85rem;
+  color: #fcd34d;
+}
+
 .swimmer-stagger {
   margin: 0.25rem 0 0;
   font-size: 0.78rem;

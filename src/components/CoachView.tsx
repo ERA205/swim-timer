@@ -254,6 +254,7 @@ export function CoachView() {
               detectionsNeeded={session.detectionsNeeded}
               distanceYards={session.distanceYards}
               raceFinished={isFinished}
+              swimmerCount={session.swimmerCount}
             />
           )}
 

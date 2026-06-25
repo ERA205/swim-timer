@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  createSwimmers,
+  createInitialSession,
   lapsPerDetection,
   POOL_LENGTH_YARDS,
   swimmerRaceTime,
@@ -13,8 +13,11 @@ import {
   type SwimmerState,
 } from '../../shared/types';
 
+type MultiRacePhase = 'departing' | 'racing';
+
 export interface LocalMultiRaceState {
   status: 'idle' | 'running' | 'finished';
+  racePhase: MultiRacePhase;
   startedAt: number | null;
   distanceYards: number;
   totalLaps: number;
@@ -26,23 +29,37 @@ export interface LocalMultiRaceState {
   focusedSwimmerId: number | null;
   lastDetectionAt: number | null;
   departureQueue: number[];
+  /** How many swimmers have left the wall (leader counts on coach start). */
+  departedCount: number;
   outboundCrossings: number;
 }
 
-function createIdleMultiRace(): LocalMultiRaceState {
+function idleFromSession(session: SessionState): LocalMultiRaceState {
   return {
     status: 'idle',
+    racePhase: 'departing',
     startedAt: null,
-    distanceYards: 100,
-    totalLaps: 4,
-    detectionsNeeded: 2,
-    swimmerCount: 2,
-    swimmers: createSwimmers(2),
+    distanceYards: session.distanceYards,
+    totalLaps: session.totalLaps,
+    detectionsNeeded: session.detectionsNeeded,
+    swimmerCount: session.swimmerCount,
+    swimmers: session.swimmers.map((s) => ({
+      ...s,
+      phase: 'waiting',
+      startOffsetMs: null,
+      lapsCompleted: 0,
+      wallTouches: 0,
+      splits: [],
+      elapsedMs: 0,
+      canTriggerStop: false,
+      focused: false,
+    })),
     elapsedMs: 0,
     finishedAt: null,
     focusedSwimmerId: null,
     lastDetectionAt: null,
     departureQueue: [],
+    departedCount: 0,
     outboundCrossings: 0,
   };
 }
@@ -64,6 +81,7 @@ function initSwimmersOnStart(session: SessionState): SwimmerState[] {
 function raceFromSession(session: SessionState): LocalMultiRaceState {
   return {
     status: 'running',
+    racePhase: 'departing',
     startedAt: session.startedAt,
     distanceYards: session.distanceYards,
     totalLaps: session.totalLaps,
@@ -75,8 +93,14 @@ function raceFromSession(session: SessionState): LocalMultiRaceState {
     focusedSwimmerId: null,
     lastDetectionAt: null,
     departureQueue: [0],
+    departedCount: 1,
     outboundCrossings: 0,
   };
+}
+
+function swimmersSetupMatches(a: SwimmerState[], b: SwimmerState[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((sw, i) => sw.id === b[i].id && sw.name === b[i].name);
 }
 
 function allSwimmersDone(swimmers: SwimmerState[], totalLaps: number): boolean {
@@ -104,13 +128,20 @@ function updateSwimmerElapsed(
   swimmers: SwimmerState[],
   mainElapsedMs: number,
 ): SwimmerState[] {
-  return swimmers.map((s) => ({
-    ...s,
-    elapsedMs:
-      s.phase === 'waiting' && s.startOffsetMs === null
-        ? 0
-        : swimmerRaceTime(mainElapsedMs, s.startOffsetMs),
-  }));
+  return swimmers.map((s) => {
+    if (s.phase === 'done') return s;
+    if (s.phase === 'waiting' && s.startOffsetMs === null) {
+      return { ...s, elapsedMs: 0 };
+    }
+    return {
+      ...s,
+      elapsedMs: swimmerRaceTime(mainElapsedMs, s.startOffsetMs),
+    };
+  });
+}
+
+function departedCountFromCrossings(outboundCrossings: number, swimmerCount: number): number {
+  return Math.min(swimmerCount, Math.max(1, outboundCrossings));
 }
 
 export function useMultiSwimmerRace(
@@ -119,7 +150,9 @@ export function useMultiSwimmerRace(
   onUpdate: (update: MultiRaceUpdate) => void,
   onFinish: (result: MultiRaceResult) => void,
 ) {
-  const [race, setRace] = useState<LocalMultiRaceState>(createIdleMultiRace);
+  const [race, setRace] = useState<LocalMultiRaceState>(() =>
+    idleFromSession(createInitialSession(100, 'multi')),
+  );
   const onUpdateRef = useRef(onUpdate);
   const onFinishRef = useRef(onFinish);
   const lastRevisionRef = useRef(-1);
@@ -139,7 +172,7 @@ export function useMultiSwimmerRace(
     if (session.sessionRevision !== lastRevisionRef.current) {
       lastRevisionRef.current = session.sessionRevision;
       lastStartedAtRef.current = null;
-      setRace(createIdleMultiRace());
+      setRace(idleFromSession(session));
       return;
     }
 
@@ -150,6 +183,22 @@ export function useMultiSwimmerRace(
     ) {
       lastStartedAtRef.current = session.startedAt;
       setRace(raceFromSession(session));
+      return;
+    }
+
+    if (session.status !== 'running') {
+      setRace((prev) => {
+        if (prev.status !== 'idle') return prev;
+        if (
+          prev.swimmerCount === session.swimmerCount &&
+          prev.distanceYards === session.distanceYards &&
+          prev.totalLaps === session.totalLaps &&
+          swimmersSetupMatches(prev.swimmers, session.swimmers)
+        ) {
+          return prev;
+        }
+        return idleFromSession(session);
+      });
     }
   }, [session]);
 
@@ -194,12 +243,19 @@ export function useMultiSwimmerRace(
         let swimmers = prev.swimmers.map((s) => ({ ...s }));
         let departureQueue = [...prev.departureQueue];
         let outboundCrossings = prev.outboundCrossings;
+        let departedCount = prev.departedCount;
+        let racePhase = prev.racePhase;
 
         if (crossing === 'track-outbound') {
           outboundCrossings += 1;
 
           if (outboundCrossings === 1) {
-            // First away already on coach start — crossing confirms leave, no stagger recorded
+            swimmers = swimmers.map((s) =>
+              s.id === 0
+                ? { ...s, phase: 'out' as const, startOffsetMs: 0 }
+                : s,
+            );
+            if (!departureQueue.includes(0)) departureQueue.push(0);
           } else if (outboundCrossings <= prev.swimmerCount) {
             const swimmerId = outboundCrossings - 1;
             const stagger = mainElapsed;
@@ -211,7 +267,7 @@ export function useMultiSwimmerRace(
             if (!departureQueue.includes(swimmerId)) {
               departureQueue.push(swimmerId);
             }
-          } else {
+          } else if (racePhase === 'racing') {
             const relaunch = nextAtWallSwimmer(swimmers, prev.totalLaps);
             if (!relaunch) return prev;
             swimmers = swimmers.map((s) =>
@@ -219,11 +275,22 @@ export function useMultiSwimmerRace(
                 ? { ...s, phase: 'out' as const, canTriggerStop: false, focused: false }
                 : s,
             );
-            departureQueue.push(relaunch.id);
+            if (!departureQueue.includes(relaunch.id)) {
+              departureQueue.push(relaunch.id);
+            }
+          } else {
+            return prev;
+          }
+
+          departedCount = departedCountFromCrossings(outboundCrossings, prev.swimmerCount);
+          if (departedCount >= prev.swimmerCount && racePhase === 'departing') {
+            racePhase = 'racing';
           }
         }
 
         if (crossing === 'track-inbound') {
+          if (departedCount < prev.swimmerCount) return prev;
+
           const returningId = nextReturningSwimmerId(swimmers, departureQueue);
           if (returningId === null) return prev;
 
@@ -239,6 +306,8 @@ export function useMultiSwimmerRace(
             swimmers: updateSwimmerElapsed(swimmers, mainElapsed),
             departureQueue,
             outboundCrossings,
+            departedCount,
+            racePhase,
             focusedSwimmerId: returningId,
             lastDetectionAt: now,
             elapsedMs: mainElapsed,
@@ -248,6 +317,8 @@ export function useMultiSwimmerRace(
         }
 
         if (crossing === 'stop') {
+          if (departedCount < prev.swimmerCount) return prev;
+
           const focused = swimmers.find(
             (s) => s.canTriggerStop && s.focused && s.phase === 'returning',
           );
@@ -294,6 +365,8 @@ export function useMultiSwimmerRace(
             swimmers,
             departureQueue,
             outboundCrossings,
+            departedCount,
+            racePhase,
             focusedSwimmerId: null,
             lastDetectionAt: now,
             elapsedMs: mainElapsed,
@@ -324,6 +397,8 @@ export function useMultiSwimmerRace(
           swimmers: updateSwimmerElapsed(swimmers, mainElapsed),
           departureQueue,
           outboundCrossings,
+          departedCount,
+          racePhase,
           lastDetectionAt: now,
           elapsedMs: mainElapsed,
         };
