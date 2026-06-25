@@ -192,7 +192,81 @@ export type LineCrossing = 'track-outbound' | 'track-inbound' | 'stop';
 export interface ZoneMotion {
   level: number;
   centroidX: number;
+  /** Motion intensity on pool side (lower X) of the zone */
+  leftMotion: number;
+  /** Motion intensity on wall side (higher X) of the zone */
+  rightMotion: number;
   direction: number;
+}
+
+export type MotionTrend = 'toward-pool' | 'toward-wall' | 'none';
+
+const MOTION_HISTORY_LEN = 14;
+const CROSS_DELTA_MIN = 0.055;
+const TREND_SMOOTH_ALPHA = 0.32;
+
+export function pushMotionSample(history: number[], centroidX: number): number[] {
+  const next = [...history, centroidX];
+  if (next.length > MOTION_HISTORY_LEN) next.shift();
+  return next;
+}
+
+export function smoothCentroidHistory(history: number[]): number[] {
+  if (history.length === 0) return [];
+  const smoothed: number[] = [];
+  let ema = history[0];
+  for (const sample of history) {
+    ema = ema * (1 - TREND_SMOOTH_ALPHA) + sample * TREND_SMOOTH_ALPHA;
+    smoothed.push(ema);
+  }
+  return smoothed;
+}
+
+/** Detect sustained movement across the zone midpoint (0.5 = the line). */
+export function detectMotionTrend(
+  history: number[],
+  motionLevel: number,
+  threshold: number,
+): MotionTrend {
+  if (history.length < 8 || motionLevel < threshold) return 'none';
+
+  const smoothed = smoothCentroidHistory(history);
+  const early = smoothed.slice(0, 4).reduce((sum, v) => sum + v, 0) / 4;
+  const late = smoothed.slice(-4).reduce((sum, v) => sum + v, 0) / 4;
+  const delta = late - early;
+
+  if (delta < -CROSS_DELTA_MIN && early > 0.46 && late < 0.54) {
+    return 'toward-pool';
+  }
+  if (delta > CROSS_DELTA_MIN && early < 0.54 && late > 0.46) {
+    return 'toward-wall';
+  }
+  return 'none';
+}
+
+/** Instantaneous flow from which half of the zone is lighting up. */
+export function hemisphereFlow(leftMotion: number, rightMotion: number): MotionTrend {
+  const total = leftMotion + rightMotion;
+  if (total < 8) return 'none';
+  const ratio = rightMotion / total;
+  if (ratio > 0.58) return 'toward-pool';
+  if (ratio < 0.42) return 'toward-wall';
+  return 'none';
+}
+
+export function combineTrends(
+  crossingTrend: MotionTrend,
+  flowTrend: MotionTrend,
+  instantDirection: number,
+): MotionTrend {
+  if (crossingTrend !== 'none') return crossingTrend;
+  if (flowTrend !== 'none' && instantDirection !== 0) {
+    const flowDir = flowTrend === 'toward-pool' ? -1 : 1;
+    if (flowDir === instantDirection) return flowTrend;
+  }
+  if (instantDirection < 0) return 'toward-pool';
+  if (instantDirection > 0) return 'toward-wall';
+  return 'none';
 }
 
 export function analyzeZoneMotion(
@@ -200,7 +274,7 @@ export function analyzeZoneMotion(
   previous: ImageData | null,
 ): ZoneMotion {
   if (!previous || current.width !== previous.width || current.height !== previous.height) {
-    return { level: 0, centroidX: 0.5, direction: 0 };
+    return { level: 0, centroidX: 0.5, leftMotion: 0, rightMotion: 0, direction: 0 };
   }
 
   const data = current.data;
@@ -208,10 +282,15 @@ export function analyzeZoneMotion(
   let diffSum = 0;
   let weightedX = 0;
   let weightTotal = 0;
+  let leftDiff = 0;
+  let rightDiff = 0;
+  let leftCount = 0;
+  let rightCount = 0;
   const step = 4;
   const width = current.width;
+  const midCol = Math.floor(width / 2);
 
-  for (let i = 0; i < data.length; i += step * 6) {
+  for (let i = 0; i < data.length; i += step * 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
@@ -221,25 +300,35 @@ export function analyzeZoneMotion(
     const diff = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb);
     diffSum += diff;
 
-    if (diff > 12) {
+    if (diff > 10) {
       const pixelIndex = i / 4;
-      const x = (pixelIndex % width) / width;
+      const col = pixelIndex % width;
+      const x = col / width;
       weightedX += x * diff;
       weightTotal += diff;
+      if (col < midCol) {
+        leftDiff += diff;
+        leftCount += 1;
+      } else {
+        rightDiff += diff;
+        rightCount += 1;
+      }
     }
   }
 
-  const samples = data.length / (step * 6);
+  const samples = data.length / (step * 4);
   const level = diffSum / samples;
   const centroidX = weightTotal > 0 ? weightedX / weightTotal : 0.5;
+  const leftMotion = leftCount > 0 ? leftDiff / leftCount : 0;
+  const rightMotion = rightCount > 0 ? rightDiff / rightCount : 0;
 
-  return { level, centroidX, direction: 0 };
+  return { level, centroidX, leftMotion, rightMotion, direction: 0 };
 }
 
 export function motionDirection(
   prevCentroid: number,
   currCentroid: number,
-  threshold = 0.008,
+  threshold = 0.012,
 ): number {
   const delta = currCentroid - prevCentroid;
   if (Math.abs(delta) < threshold) return 0;

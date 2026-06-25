@@ -49,12 +49,24 @@ export function MultiCameraRace() {
     handleFinish,
   );
 
-  const { trackMotion, stopMotion, calibrate, isCalibrating } = useMultiLineDetection({
+  const directionTesting = !!stream && session.status === 'ready';
+  const directionActive = !!stream && (session.status === 'ready' || race.status === 'running');
+
+  const {
+    trackMotion,
+    stopMotion,
+    trackTrend,
+    stopTrend,
+    lastCrossingFlash,
+    calibrate,
+    isCalibrating,
+  } = useMultiLineDetection({
     videoRef,
     canvasRef,
     config,
     active: !!stream,
-    detecting: !!stream && race.status === 'running',
+    detecting: directionActive,
+    timingActive: race.status === 'running',
     stopArmed,
     resetKey: sessionRevision,
     onCrossing: handleCrossing,
@@ -140,16 +152,32 @@ export function MultiCameraRace() {
         <canvas key={`overlay-${sessionRevision}`} ref={canvasRef} className="camera-overlay" />
         {cameraError && <div className="camera-error"><p>{cameraError}</p></div>}
         {race.status === 'running' && <div className="camera-badge running">Timing</div>}
+        {directionTesting && <div className="camera-badge direction-test">Direction test — wave past lines</div>}
         {shouldStream && <div className="camera-badge streaming">Coach viewing</div>}
         {focused && (
           <div className="camera-badge focused-swimmer">Tracking {focused.name}</div>
+        )}
+        {lastCrossingFlash && (
+          <div className={`camera-badge crossing-flash crossing-${lastCrossingFlash.crossing}`}>
+            {crossingLabel(lastCrossingFlash.crossing)}
+          </div>
         )}
       </div>
 
       <div className="camera-hud">
         <div className="hud-metric">
-          <span className="metric-label">Time</span>
+          <span className="metric-label">Main clock</span>
           <span className="metric-value">{formatTime(race.elapsedMs)}</span>
+        </div>
+        <div className="hud-metric">
+          <span className="metric-label">Track dir</span>
+          <span className={`metric-value direction-${trackTrend}`}>{trendHudLabel(trackTrend)}</span>
+        </div>
+        <div className="hud-metric">
+          <span className="metric-label">Stop dir</span>
+          <span className={`metric-value direction-${stopTrend}`}>
+            {stopArmed ? trendHudLabel(stopTrend) : 'off'}
+          </span>
         </div>
         <div className="hud-metric">
           <span className="metric-label">Track motion</span>
@@ -184,7 +212,35 @@ export function MultiCameraRace() {
             {isCalibrating ? 'Calibrating…' : 'Calibrate'}
           </button>
         </div>
+        {directionActive && (
+          <p className="hint">
+            Orange track line: ← pool = leaving wall, wall → = returning.
+            {directionTesting && ' Test passes now — flashes confirm direction before you start.'}
+          </p>
+        )}
       </section>
     </div>
   );
+}
+
+function trendHudLabel(trend: 'toward-pool' | 'toward-wall' | 'none'): string {
+  switch (trend) {
+    case 'toward-pool':
+      return '← leaving wall';
+    case 'toward-wall':
+      return '→ toward wall';
+    default:
+      return '—';
+  }
+}
+
+function crossingLabel(crossing: 'track-outbound' | 'track-inbound' | 'stop'): string {
+  switch (crossing) {
+    case 'track-outbound':
+      return 'OUT — leaving wall';
+    case 'track-inbound':
+      return 'IN — returning';
+    case 'stop':
+      return 'STOP — at wall';
+  }
 }
