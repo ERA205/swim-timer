@@ -99,8 +99,9 @@ export function SwimmerPanel({
         })}
       </div>
       <p className="hint">
-        Coach sets swimmer count. Leader starts on coach Start; each next track cross records their gap.
-        After all leave, returns are tracked — each finisher&apos;s time = main clock minus their gap.
+        Coach Start begins the main clock. 1st track cross = swimmer 1 swimming.
+        2nd cross records swimmer 2&apos;s gap; each return stops that swimmer&apos;s time
+        (swimmer 2 = main clock minus gap).
       </p>
     </div>
   );

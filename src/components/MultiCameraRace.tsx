@@ -213,7 +213,7 @@ export function MultiCameraRace() {
           {session.status === 'idle' && `Waiting for coach — ${session.swimmerCount} swimmers configured`}
           {session.status === 'ready' && `Armed — ${session.swimmerCount} swimmers, waiting for coach start`}
           {race.status === 'running' && race.racePhase === 'departing' && (
-            `Departures ${race.departedCount}/${session.swimmerCount} — waiting for all to leave wall`
+            `Departures ${race.departedCount}/${session.swimmerCount} — 1st cross = swimmer 1, then record gaps`
           )}
           {race.status === 'running' && race.racePhase === 'racing' && stopArmed && (
             `Stop line armed for ${focused?.name ?? 'swimmer'}`

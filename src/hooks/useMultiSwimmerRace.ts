@@ -65,10 +65,10 @@ function idleFromSession(session: SessionState): LocalMultiRaceState {
 }
 
 function initSwimmersOnStart(session: SessionState): SwimmerState[] {
-  return session.swimmers.map((s, id) => ({
+  return session.swimmers.map((s) => ({
     ...s,
-    phase: id === 0 ? ('out' as const) : ('waiting' as const),
-    startOffsetMs: id === 0 ? 0 : null,
+    phase: 'waiting' as const,
+    startOffsetMs: null,
     canTriggerStop: false,
     focused: false,
     lapsCompleted: 0,
@@ -92,8 +92,8 @@ function raceFromSession(session: SessionState): LocalMultiRaceState {
     finishedAt: null,
     focusedSwimmerId: null,
     lastDetectionAt: null,
-    departureQueue: [0],
-    departedCount: 1,
+    departureQueue: [],
+    departedCount: 0,
     outboundCrossings: 0,
   };
 }
@@ -141,7 +141,7 @@ function updateSwimmerElapsed(
 }
 
 function departedCountFromCrossings(outboundCrossings: number, swimmerCount: number): number {
-  return Math.min(swimmerCount, Math.max(1, outboundCrossings));
+  return Math.min(swimmerCount, outboundCrossings);
 }
 
 export function useMultiSwimmerRace(
@@ -249,23 +249,20 @@ export function useMultiSwimmerRace(
         if (crossing === 'track-outbound') {
           outboundCrossings += 1;
 
-          if (outboundCrossings === 1) {
-            swimmers = swimmers.map((s) =>
-              s.id === 0
-                ? { ...s, phase: 'out' as const, startOffsetMs: 0 }
-                : s,
-            );
-            if (!departureQueue.includes(0)) departureQueue.push(0);
-          } else if (outboundCrossings <= prev.swimmerCount) {
+          if (outboundCrossings <= prev.swimmerCount) {
             const swimmerId = outboundCrossings - 1;
-            const stagger = mainElapsed;
+            const startOffsetMs = swimmerId === 0 ? 0 : mainElapsed;
             swimmers = swimmers.map((s) =>
               s.id === swimmerId
-                ? { ...s, phase: 'out' as const, startOffsetMs: stagger }
+                ? { ...s, phase: 'out' as const, startOffsetMs }
                 : s,
             );
             if (!departureQueue.includes(swimmerId)) {
               departureQueue.push(swimmerId);
+            }
+            departedCount = departedCountFromCrossings(outboundCrossings, prev.swimmerCount);
+            if (departedCount >= prev.swimmerCount) {
+              racePhase = 'racing';
             }
           } else if (racePhase === 'racing') {
             const relaunch = nextAtWallSwimmer(swimmers, prev.totalLaps);
@@ -280,11 +277,6 @@ export function useMultiSwimmerRace(
             }
           } else {
             return prev;
-          }
-
-          departedCount = departedCountFromCrossings(outboundCrossings, prev.swimmerCount);
-          if (departedCount >= prev.swimmerCount && racePhase === 'departing') {
-            racePhase = 'racing';
           }
         }
 
